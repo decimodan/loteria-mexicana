@@ -1,0 +1,363 @@
+---
+const urlsByPath = import.meta.glob('../../public/cartas-sin-borde/*.{jpg,jpeg,png,webp,gif}', {
+	query: '?url',
+	import: 'default',
+	eager: true
+});
+const thumbUrlsByPath = import.meta.glob('../../public/cartas/thumbs-sin-borde/*.{jpg,jpeg,png,webp,gif}', {
+	query: '?url',
+	import: 'default',
+	eager: true
+});
+
+const thumbByName = new Map(
+	Object.entries(thumbUrlsByPath).map(([path, src]) => {
+		const filename = path.split('/').pop() ?? path;
+		return [filename.normalize('NFC'), String(src)];
+	})
+);
+
+const cartas = Object.entries(urlsByPath)
+	.map(([path, src]) => {
+		const filename = path.split('/').pop() ?? path;
+		return {
+			filename,
+			src: String(src),
+			thumbSrc: thumbByName.get(filename.normalize('NFC')) ?? String(src),
+			label: filename
+				.replace(/\.(jpe?g|png|webp|gif)$/i, '')
+				.replace(/^\d+-/, '')
+				.replace(/-/g, ' ')
+		};
+	})
+	.sort((a, b) => a.filename.localeCompare(b.filename, 'es'));
+---
+
+<section class="wrap" aria-label="Baraja de Lotería Mexicana">
+	<header class="topbar">
+		<section class="drawnStrip" aria-label="Cartas que ya salieron">
+			<div id="drawnGrid" class="strip" role="list" aria-label="Miniaturas"></div>
+		</section>
+	</header>
+
+	<main class="stage" aria-live="polite">
+		<div class="cardFrame">
+			<div class="cardArea">
+				<div id="placeholder" class="placeholder" role="img" aria-label="Baraja sin iniciar">
+					<div class="phInner">
+						<div class="phTitle">Loteria Mexicana</div>
+						<div class="phSub">Presiona <strong>Iniciar</strong> para comenzar.</div>
+					</div>
+				</div>
+				<img id="cartaImg" class="cartaImg" alt="Carta de la lotería" />
+			</div>
+		</div>
+	</main>
+
+	<footer class="bottombar">
+		<div class="stats" aria-label="Estado de la baraja">
+			<span>Salidas: <strong id="drawn">0</strong></span>
+			<span>Restantes: <strong id="remaining">{cartas.length}</strong></span>
+			<span>Total: <strong id="total">{cartas.length}</strong></span>
+		</div>
+		<button id="drawBtn" class="btn primary" type="button">Iniciar</button>
+	</footer>
+</section>
+
+<script define:vars={{ cartas }}>
+	function randInt(maxExclusive) {
+		if (maxExclusive <= 0) return 0;
+		const cryptoObj = globalThis.crypto;
+		if (cryptoObj?.getRandomValues) {
+			const arr = new Uint32Array(1);
+			cryptoObj.getRandomValues(arr);
+			return arr[0] % maxExclusive;
+		}
+		return Math.floor(Math.random() * maxExclusive);
+	}
+
+	function shuffleInPlace(a) {
+		for (let i = a.length - 1; i > 0; i--) {
+			const j = randInt(i + 1);
+			[a[i], a[j]] = [a[j], a[i]];
+		}
+		return a;
+	}
+
+	const deck = shuffleInPlace([...cartas]);
+	let idx = 0;
+	let started = false;
+
+	const $img = document.getElementById('cartaImg');
+	const $drawn = document.getElementById('drawn');
+	const $remaining = document.getElementById('remaining');
+	const $drawBtn = document.getElementById('drawBtn');
+	const $placeholder = document.getElementById('placeholder');
+	const $drawnGrid = document.getElementById('drawnGrid');
+	const MAX_THUMBS = 4;
+
+	function setStatus() {
+		$drawn.textContent = String(idx);
+		$remaining.textContent = String(deck.length - idx);
+		if (idx >= deck.length) {
+			$drawBtn.disabled = true;
+			$drawBtn.textContent = 'Baraja terminada';
+		} else {
+			$drawBtn.disabled = false;
+			$drawBtn.textContent = started ? 'Continuar' : 'Iniciar';
+		}
+	}
+
+	function draw() {
+		if (idx >= deck.length) return;
+		started = true;
+		const c = deck[idx++];
+		$img.src = c.src;
+		$img.alt = `Carta: ${c.label}`;
+		$img.classList.add('visible');
+		$placeholder?.classList.add('hidden');
+
+		if ($drawnGrid) {
+			const item = document.createElement('div');
+			item.className = 'mini';
+			item.setAttribute('role', 'listitem');
+			item.innerHTML = `
+				<img class="miniImg" src="${c.thumbSrc}" alt="Carta: ${c.label}" loading="lazy" decoding="async" />
+			`;
+			$drawnGrid.prepend(item);
+
+			while ($drawnGrid.children.length > MAX_THUMBS) {
+				$drawnGrid.lastElementChild?.remove();
+			}
+		}
+		setStatus();
+	}
+
+	$drawBtn?.addEventListener('click', draw);
+
+	setStatus();
+</script>
+
+<style>
+	.wrap {
+		--thumb-w: min(25vw, 96px);
+		--thumb-h: calc(var(--thumb-w) * 4 / 3);
+		height: 100dvh;
+		overflow: hidden;
+		display: grid;
+		grid-template-rows: auto 1fr auto;
+		gap: 10px;
+		padding: 10px 10px 12px;
+		background: #000;
+		color: #e5e7eb;
+	}
+
+	.topbar {
+		display: grid;
+		gap: 8px;
+		width: min(520px, 100%);
+		margin-inline: auto;
+	}
+
+	.drawnStrip {
+		padding: 0;
+		overflow: hidden;
+		height: calc(var(--thumb-h) + 4px);
+		width: 100%;
+	}
+
+	.cardFrame {
+		background: transparent;
+		border: 0;
+		border-radius: 0;
+		overflow: hidden;
+		height: 100%;
+		display: grid;
+		grid-template-rows: 1fr;
+		justify-self: center;
+	}
+
+	.cardArea {
+		position: relative;
+		min-height: 0;
+	}
+
+	.stage {
+		min-height: 0;
+		width: 100%;
+		display: flex;
+		justify-content: center;
+		align-items: stretch;
+	}
+
+	.stage .cardFrame {
+		width: min(520px, 100%);
+		margin-inline: auto;
+		max-height: 100%;
+	}
+
+	.cartaImg {
+		display: block;
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+		background: #000;
+		opacity: 0;
+		transition: opacity 180ms ease;
+	}
+
+	.cartaImg.visible {
+		opacity: 1;
+	}
+
+	.cartaImg:not([src]) {
+		display: none;
+	}
+
+	.placeholder {
+		display: grid;
+		place-items: center;
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		background: #000;
+	}
+
+	.placeholder.hidden {
+		display: none;
+	}
+
+	.phInner {
+		text-align: center;
+		padding: 18px;
+	}
+
+	.phTitle {
+		font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+		font-weight: 900;
+		font-size: clamp(44px, 10vw, 76px);
+		letter-spacing: 0.03em;
+		text-transform: uppercase;
+		background: linear-gradient(180deg, #fef08a 0%, #facc15 45%, #f97316 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+		text-shadow:
+			0 2px 0 #7c2d12,
+			0 6px 18px rgba(0, 0, 0, 0.6);
+	}
+
+	.phSub {
+		margin-top: 12px;
+		color: #d1d5db;
+		font-size: clamp(16px, 2.8vw, 20px);
+	}
+
+	.strip {
+		display: flex;
+		gap: 10px;
+		justify-content: center;
+		overflow-x: hidden;
+		overflow-y: hidden;
+		height: 100%;
+		align-items: center;
+		padding: 0;
+		width: 100%;
+	}
+
+	.strip::-webkit-scrollbar {
+		display: none;
+	}
+
+	:global(.mini) {
+		flex: 0 0 auto !important;
+		width: var(--thumb-w) !important;
+		min-width: var(--thumb-w) !important;
+		max-width: var(--thumb-w) !important;
+		height: var(--thumb-h) !important;
+		min-height: var(--thumb-h) !important;
+		max-height: var(--thumb-h) !important;
+		border-radius: 8px;
+		overflow: hidden;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: rgba(255, 255, 255, 0.18);
+		display: grid;
+		place-items: center;
+		padding: 2px;
+		box-sizing: border-box;
+	}
+
+	:global(.miniImg) {
+		display: block;
+		width: 100% !important;
+		height: 100% !important;
+		max-width: 100%;
+		max-height: 100%;
+		object-fit: contain;
+		object-position: center;
+		background: rgba(0, 0, 0, 0.12);
+	}
+
+	.bottombar {
+		display: grid;
+		place-items: center;
+		padding-top: 2px;
+		width: 100%;
+		gap: 8px;
+	}
+
+	.stats {
+		width: min(520px, 100%);
+		display: flex;
+		justify-content: space-between;
+		gap: 10px;
+		color: #cbd5e1;
+		font-size: 12px;
+		white-space: nowrap;
+	}
+
+	.btn {
+		appearance: none;
+		border: 1px solid rgba(255, 255, 255, 0.16);
+		background: rgba(255, 255, 255, 0.08);
+		color: #e5e7eb;
+		padding: 12px 18px;
+		border-radius: 14px;
+		cursor: pointer;
+		font-weight: 650;
+		width: min(520px, 100%);
+		font-size: 18px;
+	}
+
+	.btn:hover {
+		background: rgba(255, 255, 255, 0.12);
+	}
+
+	.btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.btn.primary {
+		border-color: rgba(255, 255, 255, 0.22);
+		background: linear-gradient(83.21deg, #16a34a 0%, #0ea5e9 100%);
+		color: #041016;
+	}
+
+	.btn.primary:hover {
+		filter: brightness(1.03);
+	}
+	@media (min-width: 860px) {
+		.wrap {
+			padding: 16px;
+			gap: 14px;
+		}
+		.stats {
+			font-size: 13px;
+		}
+	}
+</style>
+
