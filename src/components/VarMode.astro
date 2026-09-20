@@ -36,7 +36,7 @@ const cartas = Object.entries(urlsByPath)
 	<header class="varHeader">
 		<a class="backLink" href="/">← Baraja normal</a>
 		<h1>Modo VAR</h1>
-		<p>Sube tus dos cartones y marca sus cartas. Se actualizarán al mismo tiempo que la baraja.</p>
+		<p>Sube tus dos cartones y arrastra sus cartas a una rejilla de 4 × 4. Se actualizarán al mismo tiempo que la baraja.</p>
 	</header>
 
 	<div id="syncStatus" class="syncStatus" role="status"></div>
@@ -54,8 +54,10 @@ const cartas = Object.entries(urlsByPath)
 				</label>
 				<img id={`preview-${board}`} class="preview" alt={`Vista previa del cartón ${board}`} hidden />
 				<details class="cardPicker" open>
-					<summary>Selecciona las cartas de este cartón</summary>
-					<div id={`picker-${board}`} class="picker" aria-label={`Cartas del cartón ${board}`}></div>
+					<summary>Arrastra las cartas de este cartón</summary>
+					<div id={`grid-${board}`} class="boardGrid" aria-label={`Rejilla del cartón ${board}`}></div>
+					<p class="pickerHint">También puedes tocar una carta para colocarla en el siguiente espacio libre. Toca una casilla para quitarla.</p>
+					<div id={`picker-${board}`} class="picker" aria-label={`Cartas disponibles para el cartón ${board}`}></div>
 				</details>
 			</article>
 		))}
@@ -96,21 +98,46 @@ const cartas = Object.entries(urlsByPath)
 	function readSelection(board) {
 		try {
 			const selection = JSON.parse(localStorage.getItem(`${BOARD_KEY}${board}`) ?? '[]');
-			return new Set(Array.isArray(selection) ? selection : []);
+			if (!Array.isArray(selection)) return Array(16).fill(null);
+			const slots = Array(16).fill(null);
+			for (const [index, filename] of selection.entries()) {
+				if (index >= 16 || !filename || slots.includes(filename)) continue;
+				slots[index] = filename;
+			}
+			return slots;
 		} catch {
-			return new Set();
+			return Array(16).fill(null);
 		}
 	}
 
 	function saveSelection(board) {
-		localStorage.setItem(`${BOARD_KEY}${board}`, JSON.stringify([...boardSelections.get(board)]));
+		localStorage.setItem(`${BOARD_KEY}${board}`, JSON.stringify(boardSelections.get(board)));
+	}
+
+	function selectedFilenames(slots) {
+		return slots.filter(Boolean);
+	}
+
+	function placeCard(board, slotIndex, filename) {
+		const slots = boardSelections.get(board);
+		const oldIndex = slots.indexOf(filename);
+		if (oldIndex >= 0) slots[oldIndex] = null;
+		slots[slotIndex] = filename;
+		saveSelection(board);
+		render();
+	}
+
+	function addToFirstEmptySlot(board, filename) {
+		const slots = boardSelections.get(board);
+		const slotIndex = slots.findIndex((slot) => !slot);
+		if (slotIndex >= 0) placeCard(board, slotIndex, filename);
 	}
 
 	function updateSummary(drawn) {
-		const selectedBoards = [...boardSelections.values()].filter((selection) => selection.size > 0).length;
-		const totalMarked = [...boardSelections.values()].reduce((total, selection) => total + selection.size, 0);
+		const selectedBoards = [...boardSelections.values()].filter((slots) => selectedFilenames(slots).length > 0).length;
+		const totalMarked = [...boardSelections.values()].reduce((total, slots) => total + selectedFilenames(slots).length, 0);
 		const totalMatched = [...boardSelections.values()].reduce(
-			(total, selection) => total + [...selection].filter((filename) => drawn.has(filename)).length,
+			(total, slots) => total + selectedFilenames(slots).filter((filename) => drawn.has(filename)).length,
 			0
 		);
 		document.getElementById('syncStatus').textContent = selectedBoards
@@ -119,28 +146,58 @@ const cartas = Object.entries(urlsByPath)
 	}
 
 	function renderBoard(board, drawn) {
-		const selection = boardSelections.get(board);
+		const slots = boardSelections.get(board);
+		const selection = new Set(selectedFilenames(slots));
+		const grid = document.getElementById(`grid-${board}`);
 		const picker = document.getElementById(`picker-${board}`);
 		const status = document.getElementById(`boardStatus-${board}`);
-		const matched = [...selection].filter((filename) => drawn.has(filename)).length;
-		status.textContent = selection.size ? `${matched} de ${selection.size} salidas` : 'Sin cartas seleccionadas';
+		const matched = selectedFilenames(slots).filter((filename) => drawn.has(filename)).length;
+		status.textContent = selection.size ? `${matched} de ${selection.size} salidas` : 'Sin cartas colocadas';
+		grid.replaceChildren();
 		picker.replaceChildren();
+
+		for (let slotIndex = 0; slotIndex < 16; slotIndex++) {
+			const filename = slots[slotIndex];
+			const slot = document.createElement('button');
+			slot.type = 'button';
+			slot.className = 'boardSlot';
+			slot.classList.toggle('drawn', Boolean(filename && drawn.has(filename)));
+			slot.setAttribute('aria-label', filename ? `Quitar ${filename}` : `Casilla ${slotIndex + 1} vacía`);
+			if (filename) {
+				const card = cartas.find((item) => item.filename === filename);
+				slot.innerHTML = `<img src="${card.thumbSrc}" alt="${card.label}" />`;
+				slot.addEventListener('click', () => {
+					slots[slotIndex] = null;
+					saveSelection(board);
+					render();
+				});
+			} else {
+				slot.textContent = '+';
+			}
+			slot.addEventListener('dragover', (event) => event.preventDefault());
+			slot.addEventListener('drop', (event) => {
+				event.preventDefault();
+				const filename = event.dataTransfer?.getData('text/plain');
+				if (filename) placeCard(board, slotIndex, filename);
+			});
+			grid.append(slot);
+		}
 
 		for (const card of cartas) {
 			const button = document.createElement('button');
 			button.type = 'button';
 			button.className = 'cardChoice';
-			button.classList.toggle('selected', selection.has(card.filename));
+			button.classList.toggle('placed', selection.has(card.filename));
 			button.classList.toggle('drawn', drawn.has(card.filename));
-			button.setAttribute('aria-pressed', String(selection.has(card.filename)));
+			button.draggable = true;
+			button.setAttribute('aria-label', `Arrastrar ${card.label}`);
 			button.title = card.label;
 			button.innerHTML = `<img src="${card.thumbSrc}" alt="${card.label}" loading="lazy" />`;
+			button.addEventListener('dragstart', (event) => {
+				event.dataTransfer?.setData('text/plain', card.filename);
+			});
 			button.addEventListener('click', () => {
-				if (selection.has(card.filename)) selection.delete(card.filename);
-				else selection.add(card.filename);
-				saveSelection(board);
-				renderBoard(board, readDrawn());
-				updateSummary(readDrawn());
+				addToFirstEmptySlot(board, card.filename);
 			});
 			picker.append(button);
 		}
@@ -273,7 +330,7 @@ const cartas = Object.entries(urlsByPath)
 		position: absolute;
 		width: 1px;
 		height: 1px;
-		op: auto;
+		top: auto;
 		overflow: hidden;
 		clip: rect(0 0 0 0);
 	}
@@ -298,6 +355,46 @@ const cartas = Object.entries(urlsByPath)
 		cursor: pointer;
 	}
 
+	.boardGrid {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 6px;
+		margin-top: 10px;
+		padding: 8px;
+		border: 1px solid #334155;
+		border-radius: 10px;
+		background: #020617;
+	}
+
+	.boardSlot {
+		min-width: 0;
+		aspect-ratio: 2 / 3;
+		padding: 2px;
+		border: 1px dashed #64748b;
+		border-radius: 5px;
+		background: #1e293b;
+		color: #94a3b8;
+		font-size: 24px;
+		cursor: pointer;
+	}
+
+	.boardSlot.drawn {
+		border: 3px solid #22c55e;
+	}
+
+	.boardSlot img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.pickerHint {
+		margin: 10px 0 0;
+		color: #94a3b8;
+		font-size: 12px;
+	}
+
 	.picker {
 		display: grid;
 		grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -317,7 +414,7 @@ const cartas = Object.entries(urlsByPath)
 		opacity: 0.72;
 	}
 
-	.cardChoice.selected {
+	.cardChoice.placed {
 		border-color: #38bdf8;
 		opacity: 1;
 	}
