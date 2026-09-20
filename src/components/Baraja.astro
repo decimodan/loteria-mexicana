@@ -134,6 +134,11 @@ const cartas = Object.entries(urlsByPath)
 	}
 
 	$drawBtn?.addEventListener('click', draw);
+	window.addEventListener('keydown', (event) => {
+		if (event.repeat) return;
+		event.preventDefault();
+		draw();
+	});
 
 	setStatus();
 </script>
@@ -360,4 +365,3 @@ const cartas = Object.entries(urlsByPath)
 		}
 	}
 </style>
-
