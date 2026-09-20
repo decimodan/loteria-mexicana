@@ -108,6 +108,22 @@ const cartas = Object.entries(urlsByPath)
 		}
 	}
 
+	function speakCard(label) {
+		if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
+
+		const speech = window.speechSynthesis;
+		speech.cancel();
+		const utterance = new SpeechSynthesisUtterance(label);
+		utterance.lang = 'es-MX';
+		utterance.rate = 0.9;
+		utterance.voice = speech
+			.getVoices()
+			.find((voice) => voice.lang.toLowerCase().startsWith('es-mx'))
+			?? speech.getVoices().find((voice) => voice.lang.toLowerCase().startsWith('es'))
+			?? null;
+		speech.speak(utterance);
+	}
+
 	function draw() {
 		if (idx >= deck.length) return;
 		started = true;
@@ -131,6 +147,7 @@ const cartas = Object.entries(urlsByPath)
 			}
 		}
 		setStatus();
+		speakCard(c.label);
 	}
 
 	$drawBtn?.addEventListener('click', draw);
