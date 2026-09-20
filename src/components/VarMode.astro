@@ -327,7 +327,9 @@ const cartas = Object.entries(urlsByPath)
 	window.setInterval(refreshFromServer, 2000);
 </script>
 
-<style>
+<!-- The board and picker cards are created dynamically by the client script,
+     so their selectors must remain global rather than Astro-scoped. -->
+<style is:global>
 	.varWrap {
 		min-height: 100dvh;
 		box-sizing: border-box;
