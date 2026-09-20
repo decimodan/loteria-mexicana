@@ -194,6 +194,7 @@ const cartas = Object.entries(urlsByPath)
 			slot.className = 'boardSlot';
 			const cardIsDrawn = Boolean(filename && drawn.has(filename));
 			slot.classList.toggle('drawn', cardIsDrawn);
+			slot.classList.toggle('pending', Boolean(filename && !cardIsDrawn));
 			slot.setAttribute('aria-label', filename ? `Quitar ${filename}${cardIsDrawn ? ', ya salió' : ''}` : `Casilla ${slotIndex + 1} vacía`);
 			if (filename) {
 				const card = cartas.find((item) => item.filename === filename);
@@ -222,6 +223,7 @@ const cartas = Object.entries(urlsByPath)
 			button.classList.toggle('placed', selection.has(card.filename));
 			const cardIsDrawn = drawn.has(card.filename);
 			button.classList.toggle('drawn', cardIsDrawn);
+			button.classList.toggle('pending', !cardIsDrawn);
 			button.draggable = true;
 			button.setAttribute('aria-label', `Arrastrar ${card.label}`);
 			button.title = card.label;
@@ -549,9 +551,9 @@ const cartas = Object.entries(urlsByPath)
 
 	/* Keep pending cards visibly subdued; called cards retain their original
 	 * colors and are therefore immediately distinguishable. */
-	.boardSlot:not(.drawn) img,
-	.cardChoice:not(.drawn) img {
-		filter: grayscale(1);
+	.boardSlot.pending img,
+	.cardChoice.pending img {
+		filter: grayscale(100%);
 		opacity: 0.5;
 	}
 
