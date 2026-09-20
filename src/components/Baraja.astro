@@ -61,6 +61,7 @@ const cartas = Object.entries(urlsByPath)
 			<span>Total: <strong id="total">{cartas.length}</strong></span>
 		</div>
 		<button id="drawBtn" class="btn primary" type="button">Iniciar</button>
+		<button id="shuffleBtn" class="btn" type="button">Barajear de nuevo</button>
 	</footer>
 </section>
 
@@ -84,7 +85,7 @@ const cartas = Object.entries(urlsByPath)
 		return a;
 	}
 
-	const deck = shuffleInPlace([...cartas]);
+	let deck = shuffleInPlace([...cartas]);
 	let idx = 0;
 	let started = false;
 
@@ -92,6 +93,7 @@ const cartas = Object.entries(urlsByPath)
 	const $drawn = document.getElementById('drawn');
 	const $remaining = document.getElementById('remaining');
 	const $drawBtn = document.getElementById('drawBtn');
+	const $shuffleBtn = document.getElementById('shuffleBtn');
 	const $placeholder = document.getElementById('placeholder');
 	const $drawnGrid = document.getElementById('drawnGrid');
 	const MAX_THUMBS = 4;
@@ -150,7 +152,20 @@ const cartas = Object.entries(urlsByPath)
 		speakCard(c.label);
 	}
 
+	function reshuffle() {
+		deck = shuffleInPlace([...cartas]);
+		idx = 0;
+		started = false;
+		$img.removeAttribute('src');
+		$img.classList.remove('visible');
+		$placeholder?.classList.remove('hidden');
+		$drawnGrid?.replaceChildren();
+		if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+		setStatus();
+	}
+
 	$drawBtn?.addEventListener('click', draw);
+	$shuffleBtn?.addEventListener('click', reshuffle);
 	window.addEventListener('keydown', (event) => {
 		if (event.repeat) return;
 		event.preventDefault();
