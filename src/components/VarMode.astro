@@ -74,7 +74,9 @@ const cartas = Object.entries(urlsByPath)
 	const boardSelections = new Map();
 	const boardReady = new Map();
 	const readyFeedback = new Map();
+	const boardLoteriaCalled = new Map();
 	const previewUrls = new Map();
+	let latestDrawn = new Set();
 
 	function readDrawn() {
 		try {
@@ -170,11 +172,18 @@ const cartas = Object.entries(urlsByPath)
 		const readyButton = document.getElementById(`ready-${board}`);
 		const readyStatus = document.getElementById(`readyStatus-${board}`);
 		const matched = selectedFilenames(slots).filter((filename) => drawn.has(filename)).length;
+		const complete = selection.size === 16 && selectedFilenames(slots).every((filename) => drawn.has(filename));
+		if (complete && !boardLoteriaCalled.get(board)) {
+			boardLoteriaCalled.set(board, true);
+			speakLoteria(board);
+		}
 		status.textContent = selection.size ? `${matched} de ${selection.size} salidas` : 'Sin cartas colocadas';
 		readyButton.disabled = selection.size !== 16;
-		readyButton.textContent = boardReady.get(board) ? '✓ Cartón listo' : 'Cartón listo';
-		readyButton.classList.toggle('confirmed', boardReady.get(board));
-		readyStatus.textContent = readyFeedback.get(board) ?? (boardReady.get(board) ? '¡Todas las cartas salieron!' : '');
+		readyButton.textContent = complete || boardReady.get(board) ? '✓ Cartón listo' : 'Cartón listo';
+		readyButton.classList.toggle('confirmed', complete || boardReady.get(board));
+		readyStatus.textContent = complete
+			? '¡Lotería! Cartón completo.'
+			: readyFeedback.get(board) ?? (boardReady.get(board) ? '¡Todas las cartas salieron!' : '');
 		grid.replaceChildren();
 		picker.replaceChildren();
 
@@ -227,12 +236,28 @@ const cartas = Object.entries(urlsByPath)
 		}
 	}
 
+	function speakLoteria(board) {
+		if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
+		const speech = window.speechSynthesis;
+		const utterance = new SpeechSynthesisUtterance(`¡Lotería! El cartón ${board} está completo.`);
+		utterance.lang = 'es-MX';
+		utterance.rate = 0.85;
+		utterance.voice = speech
+			.getVoices()
+			.find((voice) => voice.lang.toLowerCase().startsWith('es-mx'))
+			?? speech.getVoices().find((voice) => voice.lang.toLowerCase().startsWith('es'))
+			?? null;
+		speech.speak(utterance);
+	}
+
 	function render() {
 		const drawn = readDrawn();
+		latestDrawn = drawn;
 		if (drawn.size === 0) {
 			for (const board of [1, 2]) {
 				saveReady(board, false);
 				readyFeedback.delete(board);
+				boardLoteriaCalled.set(board, false);
 			}
 		}
 		for (const board of [1, 2]) renderBoard(board, drawn);
@@ -241,7 +266,7 @@ const cartas = Object.entries(urlsByPath)
 
 	function confirmBoard(board) {
 		const slots = boardSelections.get(board);
-		const drawn = readDrawn();
+		const drawn = latestDrawn;
 		const selected = selectedFilenames(slots);
 		if (selected.length < 16) {
 			readyFeedback.set(board, `Coloca las 16 cartas (${16 - selected.length} pendientes).`);
@@ -261,10 +286,12 @@ const cartas = Object.entries(urlsByPath)
 
 	async function refreshFromServer() {
 		const drawn = await readDrawnFromServer();
+		latestDrawn = drawn;
 		if (drawn.size === 0) {
 			for (const board of [1, 2]) {
 				saveReady(board, false);
 				readyFeedback.delete(board);
+				boardLoteriaCalled.set(board, false);
 			}
 		}
 		for (const board of [1, 2]) renderBoard(board, drawn);
@@ -475,6 +502,8 @@ const cartas = Object.entries(urlsByPath)
 
 	.boardSlot.drawn {
 		border: 3px solid #22c55e;
+		background: #14532d;
+		box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
 	}
 
 	.boardSlot img {
@@ -511,6 +540,12 @@ const cartas = Object.entries(urlsByPath)
 
 	.cardChoice.placed {
 		border-color: #38bdf8;
+		opacity: 1;
+	}
+
+	.cardChoice.drawn {
+		border-color: #22c55e;
+		box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
 		opacity: 1;
 	}
 
