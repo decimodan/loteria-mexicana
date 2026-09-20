@@ -168,10 +168,13 @@ const cartas = Object.entries(urlsByPath)
 		const selection = new Set(selectedFilenames(slots));
 		const grid = document.getElementById(`grid-${board}`);
 		const picker = document.getElementById(`picker-${board}`);
+		const pickerDetails = grid.closest('.cardPicker');
 		const status = document.getElementById(`boardStatus-${board}`);
 		const readyButton = document.getElementById(`ready-${board}`);
 		const readyStatus = document.getElementById(`readyStatus-${board}`);
 		const matched = selectedFilenames(slots).filter((filename) => drawn.has(filename)).length;
+		const assembled = selection.size === 16;
+		pickerDetails?.classList.toggle('assembled', assembled);
 		const complete = selection.size === 16 && selectedFilenames(slots).every((filename) => drawn.has(filename));
 		if (complete && !boardLoteriaCalled.get(board)) {
 			boardLoteriaCalled.set(board, true);
@@ -478,6 +481,14 @@ const cartas = Object.entries(urlsByPath)
 		padding: 8px 0;
 		color: #e2e8f0;
 		cursor: pointer;
+	}
+
+	/* Once all 16 cards are placed, keep the assembled board visible but hide
+	 * the controls that are only needed while building it. */
+	.cardPicker.assembled > summary,
+	.cardPicker.assembled .pickerHint,
+	.cardPicker.assembled .picker {
+		display: none;
 	}
 
 	.boardGrid {
