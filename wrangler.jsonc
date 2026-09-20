@@ -4,7 +4,21 @@
 		"global_fetch_strictly_public"
 	],
 	"name": "loteria-mexicana",
-	"main": "@astrojs/cloudflare/entrypoints/server",
+	"main": "./src/worker.ts",
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "DECK_ROOM",
+				"class_name": "DeckRoom"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["DeckRoom"]
+		}
+	],
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS"

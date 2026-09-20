@@ -1,0 +1,352 @@
+---
+const urlsByPath = import.meta.glob('../../public/cartas-sin-borde/*.{jpg,jpeg,png,webp,gif}', {
+	query: '?url',
+	import: 'default',
+	eager: true
+});
+const thumbUrlsByPath = import.meta.glob('../../public/cartas/thumbs-sin-borde/*.{jpg,jpeg,png,webp,gif}', {
+	query: '?url',
+	import: 'default',
+	eager: true
+});
+
+const thumbByName = new Map(
+	Object.entries(thumbUrlsByPath).map(([path, src]) => {
+		const filename = path.split('/').pop() ?? path;
+		return [filename.normalize('NFC'), String(src)];
+	})
+);
+
+const cartas = Object.entries(urlsByPath)
+	.map(([path]) => {
+		const filename = path.split('/').pop() ?? path;
+		return {
+			filename,
+			thumbSrc: thumbByName.get(filename.normalize('NFC')) ?? '',
+			label: filename
+				.replace(/\.(jpe?g|png|webp|gif)$/i, '')
+				.replace(/^\d+-/, '')
+				.replace(/-/g, ' ')
+		};
+	})
+	.sort((a, b) => a.filename.localeCompare(b.filename, 'es'));
+---
+
+<section class="varWrap" aria-label="Modo VAR">
+	<header class="varHeader">
+		<a class="backLink" href="/">← Baraja normal</a>
+		<h1>Modo VAR</h1>
+		<p>Sube tus dos cartones y marca sus cartas. Se actualizarán al mismo tiempo que la baraja.</p>
+	</header>
+
+	<div id="syncStatus" class="syncStatus" role="status"></div>
+
+	<main class="boards">
+		{[1, 2].map((board) => (
+			<article class="board" data-board={board}>
+				<header class="boardHeader">
+					<h2>Cartón {board}</h2>
+					<div id={`boardStatus-${board}`} class="boardStatus"></div>
+				</header>
+				<label class="uploadBox" for={`upload-${board}`}>
+					<span>📷 Subir foto del cartón {board}</span>
+					<input id={`upload-${board}`} type="file" accept="image/*" />
+				</label>
+				<img id={`preview-${board}`} class="preview" alt={`Vista previa del cartón ${board}`} hidden />
+				<details class="cardPicker" open>
+					<summary>Selecciona las cartas de este cartón</summary>
+					<div id={`picker-${board}`} class="picker" aria-label={`Cartas del cartón ${board}`}></div>
+				</details>
+			</article>
+		))}
+	</main>
+</section>
+
+<script define:vars={{ cartas }}>
+	const DECK_KEY = 'loteria-mexicana:deck-state-v1';
+	const BOARD_KEY = 'loteria-mexicana:var-board-';
+	const boardSelections = new Map();
+	const previewUrls = new Map();
+
+	function readDrawn() {
+		try {
+			const state = JSON.parse(localStorage.getItem(DECK_KEY) ?? 'null');
+			if (!Array.isArray(state?.deck)) return new Set();
+			const idx = Math.min(Math.max(Number(state.idx) || 0, 0), state.deck.length);
+			return new Set(state.deck.slice(0, idx));
+		} catch {
+			return new Set();
+		}
+	}
+
+	async function readDrawnFromServer() {
+		try {
+			const response = await fetch('/api/deck', { cache: 'no-store' });
+			if (response.ok) {
+				const state = await response.json();
+				const idx = Math.min(Math.max(Number(state.idx) || 0, 0), state.deck.length);
+				return new Set(state.deck.slice(0, idx));
+			}
+		} catch {
+			// Fall back to the local cache when the shared deck service is unavailable.
+		}
+		return readDrawn();
+	}
+
+	function readSelection(board) {
+		try {
+			const selection = JSON.parse(localStorage.getItem(`${BOARD_KEY}${board}`) ?? '[]');
+			return new Set(Array.isArray(selection) ? selection : []);
+		} catch {
+			return new Set();
+		}
+	}
+
+	function saveSelection(board) {
+		localStorage.setItem(`${BOARD_KEY}${board}`, JSON.stringify([...boardSelections.get(board)]));
+	}
+
+	function updateSummary(drawn) {
+		const selectedBoards = [...boardSelections.values()].filter((selection) => selection.size > 0).length;
+		const totalMarked = [...boardSelections.values()].reduce((total, selection) => total + selection.size, 0);
+		const totalMatched = [...boardSelections.values()].reduce(
+			(total, selection) => total + [...selection].filter((filename) => drawn.has(filename)).length,
+			0
+		);
+		document.getElementById('syncStatus').textContent = selectedBoards
+			? `Sincronizado: ${totalMatched} de ${totalMarked} cartas de tus cartones han salido.`
+			: 'Sube tus cartones y selecciona sus cartas para comenzar el seguimiento.';
+	}
+
+	function renderBoard(board, drawn) {
+		const selection = boardSelections.get(board);
+		const picker = document.getElementById(`picker-${board}`);
+		const status = document.getElementById(`boardStatus-${board}`);
+		const matched = [...selection].filter((filename) => drawn.has(filename)).length;
+		status.textContent = selection.size ? `${matched} de ${selection.size} salidas` : 'Sin cartas seleccionadas';
+		picker.replaceChildren();
+
+		for (const card of cartas) {
+			const button = document.createElement('button');
+			button.type = 'button';
+			button.className = 'cardChoice';
+			button.classList.toggle('selected', selection.has(card.filename));
+			button.classList.toggle('drawn', drawn.has(card.filename));
+			button.setAttribute('aria-pressed', String(selection.has(card.filename)));
+			button.title = card.label;
+			button.innerHTML = `<img src="${card.thumbSrc}" alt="${card.label}" loading="lazy" />`;
+			button.addEventListener('click', () => {
+				if (selection.has(card.filename)) selection.delete(card.filename);
+				else selection.add(card.filename);
+				saveSelection(board);
+				renderBoard(board, readDrawn());
+				updateSummary(readDrawn());
+			});
+			picker.append(button);
+		}
+	}
+
+	function render() {
+		const drawn = readDrawn();
+		for (const board of [1, 2]) renderBoard(board, drawn);
+		updateSummary(drawn);
+	}
+
+	async function refreshFromServer() {
+		const drawn = await readDrawnFromServer();
+		for (const board of [1, 2]) renderBoard(board, drawn);
+		updateSummary(drawn);
+	}
+
+	for (const board of [1, 2]) {
+		boardSelections.set(board, readSelection(board));
+		document.getElementById(`upload-${board}`).addEventListener('change', (event) => {
+			const file = event.target.files?.[0];
+			if (!file) return;
+			const previousUrl = previewUrls.get(board);
+			if (previousUrl) URL.revokeObjectURL(previousUrl);
+			const url = URL.createObjectURL(file);
+			previewUrls.set(board, url);
+			const preview = document.getElementById(`preview-${board}`);
+			preview.src = url;
+			preview.hidden = false;
+		});
+	}
+
+	window.addEventListener('loteria:deck-change', refreshFromServer);
+	window.addEventListener('storage', (event) => {
+		if (event.key === DECK_KEY) refreshFromServer();
+	});
+	window.addEventListener('pageshow', render);
+	render();
+	void refreshFromServer();
+	window.setInterval(refreshFromServer, 2000);
+</script>
+
+<style>
+	.varWrap {
+		min-height: 100dvh;
+		box-sizing: border-box;
+		padding: 20px;
+		background: #0b1020;
+		color: #e5e7eb;
+	}
+
+	.varHeader,
+	.syncStatus,
+	.boards {
+		width: min(1100px, 100%);
+		margin-inline: auto;
+	}
+
+	.varHeader {
+		text-align: center;
+	}
+
+	.backLink {
+		color: #93c5fd;
+		text-decoration: none;
+	}
+
+	h1 {
+		margin: 12px 0 4px;
+		font-size: clamp(32px, 7vw, 56px);
+	}
+
+	.varHeader p {
+		margin: 0 auto;
+		max-width: 650px;
+		color: #cbd5e1;
+	}
+
+	.syncStatus {
+		margin-top: 18px;
+		padding: 12px 16px;
+		border: 1px solid #334155;
+		border-radius: 12px;
+		background: #111827;
+		text-align: center;
+	}
+
+	.boards {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 18px;
+		margin-top: 18px;
+	}
+
+	.board {
+		min-width: 0;
+		padding: 16px;
+		border: 1px solid #334155;
+		border-radius: 16px;
+		background: #111827;
+	}
+
+	.boardHeader {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 10px;
+	}
+
+	h2 {
+		margin: 0 0 12px;
+	}
+
+	.boardStatus {
+		color: #93c5fd;
+		font-size: 13px;
+	}
+
+	.uploadBox {
+		display: block;
+		padding: 14px;
+		border: 1px dashed #64748b;
+		border-radius: 10px;
+		color: #bfdbfe;
+		text-align: center;
+		cursor: pointer;
+	}
+
+	.uploadBox input {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		op: auto;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+	}
+
+	.preview {
+		display: block;
+		width: 100%;
+		max-height: 280px;
+		margin-top: 12px;
+		border-radius: 10px;
+		object-fit: contain;
+		background: #020617;
+	}
+
+	.cardPicker {
+		margin-top: 14px;
+	}
+
+	.cardPicker summary {
+		padding: 8px 0;
+		color: #e2e8f0;
+		cursor: pointer;
+	}
+
+	.picker {
+		display: grid;
+		grid-template-columns: repeat(5, minmax(0, 1fr));
+		gap: 6px;
+		max-height: 430px;
+		overflow-y: auto;
+		padding-top: 8px;
+	}
+
+	.cardChoice {
+		position: relative;
+		padding: 2px;
+		border: 2px solid transparent;
+		border-radius: 6px;
+		background: #1e293b;
+		cursor: pointer;
+		opacity: 0.72;
+	}
+
+	.cardChoice.selected {
+		border-color: #38bdf8;
+		opacity: 1;
+	}
+
+	.cardChoice.drawn::after {
+		content: '✓';
+		position: absolute;
+		top: 2px;
+		right: 4px;
+		color: #22c55e;
+		font-size: 20px;
+		font-weight: 900;
+		text-shadow: 0 1px 3px #000;
+	}
+
+	.cardChoice img {
+		display: block;
+		width: 100%;
+		aspect-ratio: 2 / 3;
+		object-fit: cover;
+	}
+
+	@media (max-width: 700px) {
+		.varWrap {
+			padding: 12px;
+		}
+
+		.boards {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>
