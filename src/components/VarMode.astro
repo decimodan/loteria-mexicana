@@ -183,11 +183,12 @@ const cartas = Object.entries(urlsByPath)
 			const slot = document.createElement('button');
 			slot.type = 'button';
 			slot.className = 'boardSlot';
-			slot.classList.toggle('drawn', Boolean(filename && drawn.has(filename)));
-			slot.setAttribute('aria-label', filename ? `Quitar ${filename}` : `Casilla ${slotIndex + 1} vacía`);
+			const cardIsDrawn = Boolean(filename && drawn.has(filename));
+			slot.classList.toggle('drawn', cardIsDrawn);
+			slot.setAttribute('aria-label', filename ? `Quitar ${filename}${cardIsDrawn ? ', ya salió' : ''}` : `Casilla ${slotIndex + 1} vacía`);
 			if (filename) {
 				const card = cartas.find((item) => item.filename === filename);
-				slot.innerHTML = `<img src="${card.thumbSrc}" alt="${card.label}" />`;
+				slot.innerHTML = `<img src="${card.thumbSrc}" alt="${card.label}" />${cardIsDrawn ? '<span class="drawnBadge">SALIO</span>' : ''}`;
 				slot.addEventListener('click', () => {
 					slots[slotIndex] = null;
 					saveSelection(board);
@@ -210,11 +211,12 @@ const cartas = Object.entries(urlsByPath)
 			button.type = 'button';
 			button.className = 'cardChoice';
 			button.classList.toggle('placed', selection.has(card.filename));
-			button.classList.toggle('drawn', drawn.has(card.filename));
+			const cardIsDrawn = drawn.has(card.filename);
+			button.classList.toggle('drawn', cardIsDrawn);
 			button.draggable = true;
 			button.setAttribute('aria-label', `Arrastrar ${card.label}`);
 			button.title = card.label;
-			button.innerHTML = `<img src="${card.thumbSrc}" alt="${card.label}" loading="lazy" />`;
+			button.innerHTML = `<img src="${card.thumbSrc}" alt="${card.label}" loading="lazy" />${cardIsDrawn ? '<span class="drawnBadge">SALIO</span>' : ''}`;
 			button.addEventListener('dragstart', (event) => {
 				event.dataTransfer?.setData('text/plain', card.filename);
 			});
@@ -459,6 +461,7 @@ const cartas = Object.entries(urlsByPath)
 	}
 
 	.boardSlot {
+		position: relative;
 		min-width: 0;
 		aspect-ratio: 2 / 3;
 		padding: 2px;
@@ -511,15 +514,20 @@ const cartas = Object.entries(urlsByPath)
 		opacity: 1;
 	}
 
-	.cardChoice.drawn::after {
-		content: '✓';
+	.drawnBadge {
 		position: absolute;
-		top: 2px;
-		right: 4px;
-		color: #22c55e;
-		font-size: 20px;
+		right: 2px;
+		bottom: 2px;
+		left: 2px;
+		padding: 2px 4px;
+		border-radius: 4px;
+		background: #16a34a;
+		color: #f0fdf4;
+		font-size: 9px;
 		font-weight: 900;
-		text-shadow: 0 1px 3px #000;
+		letter-spacing: 0.04em;
+		text-shadow: 0 1px 2px #052e16;
+		text-align: center;
 	}
 
 	.cardChoice img {
