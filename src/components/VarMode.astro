@@ -498,12 +498,22 @@ const cartas = Object.entries(urlsByPath)
 		color: #94a3b8;
 		font-size: 24px;
 		cursor: pointer;
+		overflow: hidden;
 	}
 
 	.boardSlot.drawn {
 		border: 3px solid #22c55e;
 		background: #14532d;
 		box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+	}
+
+	.boardSlot.drawn::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		background: rgba(22, 163, 74, 0.52);
+		pointer-events: none;
 	}
 
 	.boardSlot.drawn::after {
@@ -566,6 +576,19 @@ const cartas = Object.entries(urlsByPath)
 		border-color: #22c55e;
 		box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
 		opacity: 1;
+		overflow: hidden;
+	}
+
+	.cardChoice.drawn .drawnBadge {
+		top: 0;
+		right: 0;
+		bottom: 0;
+		left: 0;
+		z-index: 2;
+		display: grid;
+		place-items: center;
+		background: rgba(22, 163, 74, 0.45);
+		font-size: 12px;
 	}
 
 	.drawnBadge {
@@ -585,11 +608,15 @@ const cartas = Object.entries(urlsByPath)
 	}
 
 	.boardSlot.drawn .drawnBadge {
-		inset: 0;
+		top: 0 !important;
+		right: 0 !important;
+		bottom: 0 !important;
+		left: 0 !important;
+		z-index: 3;
 		display: grid;
 		place-items: center;
 		border-radius: 3px;
-		background: rgba(22, 163, 74, 0.58);
+		background: transparent;
 		font-size: 14px;
 		letter-spacing: 0.12em;
 	}
