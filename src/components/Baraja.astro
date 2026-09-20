@@ -35,6 +35,7 @@ const cartas = Object.entries(urlsByPath)
 
 <section class="wrap" aria-label="Baraja de Lotería Mexicana">
 	<header class="topbar">
+		<a class="modeLink" href="/var">Modo VAR</a>
 		<section class="drawnStrip" aria-label="Cartas que ya salieron">
 			<div id="drawnGrid" class="strip" role="list" aria-label="Miniaturas"></div>
 		</section>
@@ -85,9 +86,31 @@ const cartas = Object.entries(urlsByPath)
 		return a;
 	}
 
-	let deck = shuffleInPlace([...cartas]);
-	let idx = 0;
-	let started = false;
+	const STORAGE_KEY = 'loteria-mexicana:deck-state-v1';
+	const cardsByFilename = new Map(cartas.map((card) => [card.filename, card]));
+
+	function createDeckState() {
+		return { deck: shuffleInPlace([...cartas]), idx: 0 };
+	}
+
+	function parseDeckState(saved) {
+		if (!Array.isArray(saved?.deck) || saved.deck.length !== cartas.length) return null;
+		const deck = saved.deck.map((filename) => cardsByFilename.get(filename));
+		if (deck.some((card) => !card) || new Set(saved.deck).size !== cartas.length) return null;
+		return { deck, idx: Math.min(Math.max(Number(saved.idx) || 0, 0), deck.length) };
+	}
+
+	function readDeckState() {
+		try {
+			return parseDeckState(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')) ?? createDeckState();
+		} catch {
+			return createDeckState();
+		}
+	}
+
+	let { deck, idx } = readDeckState();
+	let started = idx > 0;
+	let hydrated = false;
 
 	const $img = document.getElementById('cartaImg');
 	const $drawn = document.getElementById('drawn');
@@ -98,10 +121,53 @@ const cartas = Object.entries(urlsByPath)
 	const $drawnGrid = document.getElementById('drawnGrid');
 	const MAX_THUMBS = 4;
 
+	function saveDeckState() {
+		const state = { deck: deck.map((card) => card.filename), idx };
+		localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+		window.dispatchEvent(new CustomEvent('loteria:deck-change'));
+		void fetch('/api/deck', {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(state)
+		}).catch(() => {});
+	}
+
+	async function hydrateDeckState() {
+		try {
+			const response = await fetch('/api/deck', { cache: 'no-store' });
+			if (response.ok) {
+				const remoteState = parseDeckState(await response.json());
+				if (remoteState) {
+					deck = remoteState.deck;
+					idx = remoteState.idx;
+					started = idx > 0;
+					localStorage.setItem(STORAGE_KEY, JSON.stringify({ deck: deck.map((card) => card.filename), idx }));
+				}
+			} else if (response.status === 404) {
+				saveDeckState();
+			}
+		} catch {
+			// Keep the local fallback when the shared deck service is unavailable.
+		}
+		hydrated = true;
+		setStatus();
+	}
+
+	function syncDeckState() {
+		const state = readDeckState();
+		deck = state.deck;
+		idx = state.idx;
+		started = idx > 0;
+		setStatus();
+	}
+
 	function setStatus() {
 		$drawn.textContent = String(idx);
 		$remaining.textContent = String(deck.length - idx);
-		if (idx >= deck.length) {
+		if (!hydrated) {
+			$drawBtn.disabled = true;
+			$drawBtn.textContent = 'Sincronizando…';
+		} else if (idx >= deck.length) {
 			$drawBtn.disabled = true;
 			$drawBtn.textContent = 'Baraja terminada';
 		} else {
@@ -149,6 +215,7 @@ const cartas = Object.entries(urlsByPath)
 			}
 		}
 		setStatus();
+		saveDeckState();
 		speakCard(c.label);
 	}
 
@@ -162,10 +229,15 @@ const cartas = Object.entries(urlsByPath)
 		$drawnGrid?.replaceChildren();
 		if ('speechSynthesis' in window) window.speechSynthesis.cancel();
 		setStatus();
+		saveDeckState();
 	}
 
 	$drawBtn?.addEventListener('click', draw);
 	$shuffleBtn?.addEventListener('click', reshuffle);
+	window.addEventListener('loteria:deck-change', syncDeckState);
+	window.addEventListener('storage', (event) => {
+		if (event.key === STORAGE_KEY) syncDeckState();
+	});
 	window.addEventListener('keydown', (event) => {
 		if (event.repeat) return;
 		event.preventDefault();
@@ -173,6 +245,7 @@ const cartas = Object.entries(urlsByPath)
 	});
 
 	setStatus();
+	void hydrateDeckState();
 </script>
 
 <style>
@@ -194,6 +267,13 @@ const cartas = Object.entries(urlsByPath)
 		gap: 8px;
 		width: min(520px, 100%);
 		margin-inline: auto;
+	}
+
+	.modeLink {
+		justify-self: end;
+		color: #93c5fd;
+		font-size: 13px;
+		text-decoration: none;
 	}
 
 	.drawnStrip {
