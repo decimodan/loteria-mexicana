@@ -48,6 +48,10 @@ const cartas = Object.entries(urlsByPath)
 					<h2>Cartón {board}</h2>
 					<div id={`boardStatus-${board}`} class="boardStatus"></div>
 				</header>
+				<div class="readyRow">
+					<button id={`ready-${board}`} class="readyButton" type="button">Cartón listo</button>
+					<span id={`readyStatus-${board}`} class="readyStatus" role="status"></span>
+				</div>
 				<label class="uploadBox" for={`upload-${board}`}>
 					<span>📷 Subir foto del cartón {board}</span>
 					<input id={`upload-${board}`} type="file" accept="image/*" />
@@ -68,6 +72,8 @@ const cartas = Object.entries(urlsByPath)
 	const DECK_KEY = 'loteria-mexicana:deck-state-v1';
 	const BOARD_KEY = 'loteria-mexicana:var-board-';
 	const boardSelections = new Map();
+	const boardReady = new Map();
+	const readyFeedback = new Map();
 	const previewUrls = new Map();
 
 	function readDrawn() {
@@ -114,6 +120,15 @@ const cartas = Object.entries(urlsByPath)
 		localStorage.setItem(`${BOARD_KEY}${board}`, JSON.stringify(boardSelections.get(board)));
 	}
 
+	function readReady(board) {
+		return localStorage.getItem(`${BOARD_KEY}${board}-ready`) === 'true';
+	}
+
+	function saveReady(board, value) {
+		boardReady.set(board, value);
+		localStorage.setItem(`${BOARD_KEY}${board}-ready`, String(value));
+	}
+
 	function selectedFilenames(slots) {
 		return slots.filter(Boolean);
 	}
@@ -140,8 +155,9 @@ const cartas = Object.entries(urlsByPath)
 			(total, slots) => total + selectedFilenames(slots).filter((filename) => drawn.has(filename)).length,
 			0
 		);
+		const readyCount = [...boardReady.values()].filter(Boolean).length;
 		document.getElementById('syncStatus').textContent = selectedBoards
-			? `Sincronizado: ${totalMatched} de ${totalMarked} cartas de tus cartones han salido.`
+			? `Sincronizado: ${totalMatched} de ${totalMarked} cartas han salido.${readyCount ? ` Cartones listos: ${readyCount}/2.` : ''}`
 			: 'Sube tus cartones y selecciona sus cartas para comenzar el seguimiento.';
 	}
 
@@ -151,8 +167,14 @@ const cartas = Object.entries(urlsByPath)
 		const grid = document.getElementById(`grid-${board}`);
 		const picker = document.getElementById(`picker-${board}`);
 		const status = document.getElementById(`boardStatus-${board}`);
+		const readyButton = document.getElementById(`ready-${board}`);
+		const readyStatus = document.getElementById(`readyStatus-${board}`);
 		const matched = selectedFilenames(slots).filter((filename) => drawn.has(filename)).length;
 		status.textContent = selection.size ? `${matched} de ${selection.size} salidas` : 'Sin cartas colocadas';
+		readyButton.disabled = selection.size !== 16;
+		readyButton.textContent = boardReady.get(board) ? '✓ Cartón listo' : 'Cartón listo';
+		readyButton.classList.toggle('confirmed', boardReady.get(board));
+		readyStatus.textContent = readyFeedback.get(board) ?? (boardReady.get(board) ? '¡Todas las cartas salieron!' : '');
 		grid.replaceChildren();
 		picker.replaceChildren();
 
@@ -205,18 +227,52 @@ const cartas = Object.entries(urlsByPath)
 
 	function render() {
 		const drawn = readDrawn();
+		if (drawn.size === 0) {
+			for (const board of [1, 2]) {
+				saveReady(board, false);
+				readyFeedback.delete(board);
+			}
+		}
 		for (const board of [1, 2]) renderBoard(board, drawn);
 		updateSummary(drawn);
 	}
 
+	function confirmBoard(board) {
+		const slots = boardSelections.get(board);
+		const drawn = readDrawn();
+		const selected = selectedFilenames(slots);
+		if (selected.length < 16) {
+			readyFeedback.set(board, `Coloca las 16 cartas (${16 - selected.length} pendientes).`);
+			render();
+			return;
+		}
+		const missing = selected.filter((filename) => !drawn.has(filename));
+		if (missing.length) {
+			readyFeedback.set(board, `Aún faltan ${missing.length} cartas por salir.`);
+			saveReady(board, false);
+		} else {
+			readyFeedback.set(board, '¡Cartón ganador!');
+			saveReady(board, true);
+		}
+		render();
+	}
+
 	async function refreshFromServer() {
 		const drawn = await readDrawnFromServer();
+		if (drawn.size === 0) {
+			for (const board of [1, 2]) {
+				saveReady(board, false);
+				readyFeedback.delete(board);
+			}
+		}
 		for (const board of [1, 2]) renderBoard(board, drawn);
 		updateSummary(drawn);
 	}
 
 	for (const board of [1, 2]) {
 		boardSelections.set(board, readSelection(board));
+		boardReady.set(board, readReady(board));
+		document.getElementById(`ready-${board}`).addEventListener('click', () => confirmBoard(board));
 		document.getElementById(`upload-${board}`).addEventListener('change', (event) => {
 			const file = event.target.files?.[0];
 			if (!file) return;
@@ -313,6 +369,42 @@ const cartas = Object.entries(urlsByPath)
 
 	.boardStatus {
 		color: #93c5fd;
+		font-size: 13px;
+	}
+
+	.readyRow {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-height: 38px;
+		margin-bottom: 10px;
+	}
+
+	.readyButton {
+		padding: 9px 13px;
+		border: 1px solid #f59e0b;
+		border-radius: 9px;
+		background: #451a03;
+		color: #fef3c7;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.readyButton:disabled {
+		border-color: #475569;
+		background: #1e293b;
+		color: #94a3b8;
+		cursor: not-allowed;
+	}
+
+	.readyButton.confirmed {
+		border-color: #22c55e;
+		background: #14532d;
+		color: #dcfce7;
+	}
+
+	.readyStatus {
+		color: #fbbf24;
 		font-size: 13px;
 	}
 
