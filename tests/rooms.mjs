@@ -51,6 +51,7 @@ assert.equal(
       action: "register",
       name: "Ana",
       boards: [physicalBoard],
+      boardNumbers: [37],
     })
   ).status,
   200,
@@ -61,6 +62,7 @@ assert.equal(
       action: "register",
       name: "Luis",
       boards: [physicalBoard],
+      boardNumbers: [38],
     })
   ).status,
   200,
@@ -71,6 +73,18 @@ assert.equal(
   "player cannot inspect other boards",
 );
 assert.equal((await call(admin)).body.players.length, 2);
+for (const nums of [[0], [101], ["1"], [], [1, 2]])
+  assert.equal(
+    (
+      await call("p", {
+        action: "register",
+        name: "Invalid",
+        boards: [physicalBoard],
+        boardNumbers: nums,
+      })
+    ).status,
+    400,
+  );
 await call(admin, { action: "draw" });
 assert.equal(
   (
@@ -100,6 +114,7 @@ assert.equal(
   "pause during VAR",
 );
 const claim = game.claims.find((c) => c.status === "pending");
+assert.equal(claim.boardNumber, claim.name === "Ana" ? 37 : 38);
 assert.deepEqual(
   claim.cards,
   physicalBoard,
@@ -143,6 +158,7 @@ game = (await call(admin)).body;
 assert.equal(game.drawn.length, 0);
 assert.equal(game.claims.length, 0);
 assert.equal(game.players.length, 2);
+assert.deepEqual(game.players.find((p) => p.name === "Ana").boardNumbers, [37]);
 assert.equal(game.round, 2);
 assert.equal(
   (await call("p", null, randomUUID().replaceAll("-", ""))).body.role,

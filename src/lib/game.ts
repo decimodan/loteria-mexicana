@@ -1,10 +1,16 @@
 import cards from "./cards.json";
-export type Player = { id: string; name: string; boards: string[][] };
+export type Player = {
+  id: string;
+  name: string;
+  boards: string[][];
+  boardNumbers?: (number | null)[];
+};
 export type Claim = {
   id: string;
   playerId: string;
   name: string;
   board: number;
+  boardNumber?: number | null;
   cards: string[];
   drawn: string[];
   status: "pending" | "confirmed" | "rejected";
@@ -48,6 +54,7 @@ export function detect(game: Game) {
           playerId: p.id,
           name: p.name,
           board: index,
+          boardNumber: p.boardNumbers?.[index] ?? null,
           cards: [...board],
           drawn: [...drawn],
           status: "pending",
@@ -74,7 +81,12 @@ export function view(game: Game, id: string) {
       ? game.claims
       : game.claims
           .filter((c) => c.status === "confirmed")
-          .map((c) => ({ name: c.name, board: c.board, status: c.status })),
+          .map((c) => ({
+            name: c.name,
+            board: c.board,
+            boardNumber: c.boardNumber,
+            status: c.status,
+          })),
   };
 }
 export function act(game: Game, id: string, data: any) {
@@ -112,10 +124,26 @@ export function act(game: Game, id: string, data: any) {
       )
     )
       fail("Cada cartón debe tener 16 cartas diferentes.");
+    if (
+      data.boardNumbers !== undefined &&
+      (!Array.isArray(data.boardNumbers) ||
+        data.boardNumbers.length !== data.boards.length ||
+        data.boardNumbers.some(
+          (n: unknown) =>
+            n !== null &&
+            (!Number.isInteger(n) || Number(n) < 1 || Number(n) > 100),
+        ))
+    )
+      fail("Numeración de cartones inválida.");
     if (game.players.length >= 100 && !game.players.some((p) => p.id === id))
       fail("La sala está llena.");
     game.players = game.players.filter((p) => p.id !== id);
-    game.players.push({ id, name: data.name.trim(), boards: data.boards });
+    game.players.push({
+      id,
+      name: data.name.trim(),
+      boards: data.boards,
+      boardNumbers: data.boardNumbers ?? data.boards.map(() => null),
+    });
     return;
   }
   if (game.admin !== id)
