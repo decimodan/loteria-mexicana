@@ -3,7 +3,12 @@ import cards from "./cards.json" with { type: "json" };
 
 // Never reorder v1: QR indexes on printed paper must remain valid across releases.
 export const MAX_PRINT_BOARDS = 100;
-export type PrintedBoard = { cards: string[]; token: string; code: string };
+export type PrintedBoard = {
+  cards: string[];
+  token: string;
+  code: string;
+  number?: number;
+};
 export function encodeBoard(board: string[]): string {
   if (board.length !== 16 || new Set(board).size !== 16)
     throw new Error("El cartón debe contener 16 cartas diferentes.");
@@ -68,7 +73,12 @@ export function generateBoards(count: number): PrintedBoard[] {
     if (seen.has(key)) continue;
     seen.add(key);
     const token = encodeBoard(board);
-    result.push({ cards: board, token, code: boardCode(token) });
+    result.push({
+      cards: board,
+      token,
+      code: boardCode(token),
+      number: result.length + 1,
+    });
   }
   return result;
 }
@@ -91,12 +101,17 @@ export function boardLink(
   token: string,
   origin: string,
   room?: string | null,
+  number?: number | null,
 ): string {
   decodeBoard(token);
   if (room && !validRoom(room)) throw new Error("Sala inválida.");
   const url = new URL(room ? "/" : "/cartones", origin);
   if (room) url.searchParams.set("sala", room);
   url.searchParams.set("carton", token);
+  if (number != null) {
+    parseBoardNumber(String(number));
+    url.searchParams.set("tabla", String(number));
+  }
   return url.href;
 }
 export function tokenFromInput(
@@ -145,4 +160,16 @@ export function mergePrintedBoard(
       "Ya tienes dos cartones. Edita tus cartones y quita uno antes de importar otro.",
     );
   return result;
+}
+
+export function parseBoardNumber(value: string | null): number | null {
+  if (value === null) return null;
+  if (!/^[1-9][0-9]{0,2}$/.test(value) || Number(value) > MAX_PRINT_BOARDS)
+    throw new Error("Número de cartón inválido.");
+  return Number(value);
+}
+export function numberFromInput(input: string): number | null {
+  input = input.trim();
+  if (input.startsWith("v1.")) return null;
+  return parseBoardNumber(new URL(input).searchParams.get("tabla"));
 }

@@ -8,6 +8,8 @@ import {
   decodeBoard,
   boardLink,
   boardCode,
+  parseBoardNumber,
+  numberFromInput,
   tokenFromInput,
   roomFromInvite,
 } from "../src/lib/printable-boards.ts";
@@ -27,6 +29,22 @@ assert.throws(() =>
   mergePrintedBoard([boards[0].cards, boards[1].cards], boards[2].token),
 );
 assert.equal(boards.length, 100);
+assert.deepEqual(
+  boards.map((b) => b.number),
+  Array.from({ length: 100 }, (_, i) => i + 1),
+);
+assert.equal(parseBoardNumber(null), null);
+assert.equal(parseBoardNumber("37"), 37);
+for (const value of ["0", "101", "-1", "2.5", "01", "abc"])
+  assert.throws(() => parseBoardNumber(value));
+const numbered = boardLink(
+  boards[0].token,
+  "https://loteria.example",
+  null,
+  37,
+);
+assert.equal(numberFromInput(numbered), 37);
+assert.equal(numberFromInput(boards[0].token), null);
 assert.equal(
   new Set(boards.map((b) => [...b.cards].sort().join("|"))).size,
   100,
@@ -104,8 +122,8 @@ if (process.env.PDF_QA_OUTPUT) {
   await writeFile(
     "tmp/pdfs/expected-qr.json",
     JSON.stringify([
-      boardLink(first.token, origin, room),
-      boardLink(second.token, origin, room),
+      boardLink(first.token, origin, room, first.number ?? 1),
+      boardLink(second.token, origin, room, second.number ?? 2),
     ]),
   );
 }

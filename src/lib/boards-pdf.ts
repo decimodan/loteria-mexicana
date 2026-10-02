@@ -59,12 +59,12 @@ export async function createBoardsPdf(
       throw new Error("Las cartas del QR no coinciden con el cartón.");
   }
   const pdf = await PDFDocument.create();
-  pdf.setTitle("Cartones físicos de Lotería Mexicana");
-  pdf.setCreator("Lotería Mexicana");
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  pdf.setTitle("Cartones físicos de Loteria Mexa");
+  pdf.setCreator("Loteria Mexa");
+  const bold = await pdf.embedFont(StandardFonts.TimesRomanBold);
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const images = new Map<string, PDFImage>();
-  const navy = rgb(0.06, 0.13, 0.21);
+  const navy = rgb(0.35, 0.09, 0.1);
   for (const [index, board] of boards.entries()) {
     // US Letter, one board per page. Coordinates here are from the top.
     const page = pdf.addPage([612, 792]);
@@ -82,18 +82,13 @@ export async function createBoardsPdf(
         font: strong ? bold : regular,
         color: navy,
       });
-    text("LOTERÍA MEXICANA", 54, 28, 22, true);
-    text(
-      `Cartón ${String(index + 1).padStart(3, "0")}  /  ${boards.length}`,
-      54,
-      58,
-      11,
-    );
-    text(board.code, 430, 58, 11, true);
-    const left = 54,
-      top = 84,
-      cellW = 126,
-      cellH = 132;
+    const number = board.number ?? index + 1;
+    text("LOTERIA MEXA", 106, 36, 25, true);
+    text(`CARTÓN ${number}`, 416, 42, 14, true);
+    const left = 106,
+      top = 80,
+      cellW = 100,
+      cellH = 144;
     for (const [slot, filename] of board.cards.entries()) {
       if (!images.has(filename)) {
         const bytes = await loadImage(filename);
@@ -107,34 +102,29 @@ export async function createBoardsPdf(
       const image = images.get(filename)!;
       const x = left + (slot % 4) * cellW;
       const y = top + Math.floor(slot / 4) * cellH;
-      const scale = Math.min(
-        (cellW - 8) / image.width,
-        (cellH - 8) / image.height,
-      );
-      const width = image.width * scale,
-        height = image.height * scale;
+      // Full artwork, edge-to-edge: no crop of card names/numbers and no letterboxing.
       page.drawImage(image, {
-        x: x + (cellW - width) / 2,
-        y: 792 - y - (cellH + height) / 2,
-        width,
-        height,
+        x,
+        y: 792 - y - cellH,
+        width: cellW,
+        height: cellH,
       });
       page.drawRectangle({
         x,
         y: 792 - y - cellH,
         width: cellW,
         height: cellH,
-        borderColor: rgb(0.75, 0.78, 0.81),
-        borderWidth: 0.6,
+        borderColor: rgb(0.96, 0.94, 0.88),
+        borderWidth: 2,
       });
     }
-    const url = boardLink(board.token, origin, room);
+    const url = boardLink(board.token, origin, room, number);
     const qr = QRCode.create(url, { errorCorrectionLevel: "M" });
     const quiet = 4,
-      qrSize = 96,
+      qrSize = 84,
       unit = qrSize / (qr.modules.size + quiet * 2);
-    const qrX = 54,
-      qrTop = 636;
+    const qrX = 264,
+      qrTop = 676;
     for (let row = 0; row < qr.modules.size; row++)
       for (let col = 0; col < qr.modules.size; col++) {
         if (qr.modules.get(row, col))
@@ -146,35 +136,6 @@ export async function createBoardsPdf(
             color: rgb(0, 0, 0),
           });
       }
-    text("Escanea para registrar este cartón en el VAR", 164, 643, 13, true);
-    text(
-      room
-        ? "1. Escanea el QR.  2. Escribe tu nombre.  3. Guarda tu cartón."
-        : "1. Escanea el QR.  2. Pega el enlace de la sala.",
-      164,
-      668,
-      10,
-    );
-    text(
-      room
-        ? "Registro disponible antes de la primera carta de la ronda."
-        : "3. Escribe tu nombre y guarda tu cartón antes de iniciar.",
-      164,
-      687,
-      10,
-    );
-    text(
-      "Regla: cartón lleno (16 cartas). El administrador revisa el VAR.",
-      164,
-      708,
-      9,
-    );
-    text(
-      `Imprimir en papel Carta al 100%  |  ${index + 1} / ${boards.length}`,
-      54,
-      754,
-      9,
-    );
     progress(index + 1, boards.length);
   }
   return pdf.save();

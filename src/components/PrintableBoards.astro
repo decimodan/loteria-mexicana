@@ -1,6 +1,6 @@
 <main class="printPage">
  <a id="back" href="/">← Volver al juego</a>
- <header><span>DEL VAR A TU MESA</span><h1>Cartones para jugar de verdad</h1><p>Imprime, reparte y juega con fichas. El VAR sigue cada cartón virtualmente.</p></header>
+ <header><span>LOTERIA MEXA · DEL VAR A TU MESA</span><h1>Cartones para jugar de verdad</h1><p>Imprime, reparte y juega con fichas. El VAR sigue cada cartón virtualmente.</p></header>
  <p id="printError" role="alert"></p>
  <section id="scan" hidden>
   <h2>Tu cartón está listo para el VAR</h2><p id="scannedCode"></p><div id="scannedBoard" class="printBoard"></div>
@@ -21,6 +21,7 @@ import {
   generateBoards,
   decodeBoard,
   boardCode,
+  parseBoardNumber,
   boardLink,
   validRoom,
   roomFromInvite,
@@ -41,7 +42,7 @@ $("printScope").textContent = room
 function preview(board: PrintedBoard) {
   const article = document.createElement("article");
   const h = document.createElement("h3");
-  h.textContent = board.code;
+  h.textContent = board.number ? `Cartón ${board.number}` : "Cartón";
   article.appendChild(h);
   const grid = document.createElement("div");
   grid.className = "printBoard";
@@ -60,9 +61,15 @@ if (token) {
   $("scan").hidden = false;
   try {
     const cards = decodeBoard(token);
-    $("scannedCode").textContent = boardCode(token);
+    const number = parseBoardNumber(params.get("tabla"));
+    $("scannedCode").textContent = number ? `Cartón ${number}` : "Cartón";
     $("scannedBoard").replaceChildren(
-      preview({ cards, token, code: boardCode(token) }),
+      preview({
+        cards,
+        token,
+        code: boardCode(token),
+        number: number ?? undefined,
+      }),
     );
     $("joinRoom").onclick = () => {
       try {
@@ -70,7 +77,7 @@ if (token) {
           ($("roomInvite") as HTMLInputElement).value,
           location.origin,
         );
-        location.assign(boardLink(token, location.origin, target));
+        location.assign(boardLink(token, location.origin, target, number));
       } catch (e) {
         $("printError").textContent = (e as Error).message;
       }
@@ -117,7 +124,7 @@ $("download").onclick = async () => {
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = `loteria-${boards.length}-cartones.pdf`;
+    link.download = `loteria-mexa-${boards.length}-cartones.pdf`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -214,8 +221,8 @@ $("download").onclick = async () => {
 }
 .printBoard img {
   width: 100%;
-  aspect-ratio: 3/4;
-  object-fit: contain;
+  aspect-ratio: 100/144;
+  object-fit: fill;
   background: white;
 }
 #scannedBoard {
