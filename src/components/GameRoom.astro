@@ -1,0 +1,512 @@
+<section class="room">
+ <header><span class="eyebrow">LOTERÍA · MULTIJUGADOR</span><h1>La mesa está lista</h1><p id="status" role="status">Conectando con la sala…</p></header>
+ <aside class="invite"><canvas id="qr" aria-label="Código QR para entrar a la sala"></canvas><div><h2>Escanea y únete</h2><p>Un administrador. Todos los demás, jugadores.</p><a id="inviteLink"></a><button id="copy">Copiar enlace</button></div></aside>
+ <p id="error" role="alert"></p>
+ <section id="roles" hidden><h2>¿Cómo vas a jugar?</h2><button id="admin">🎙 Ser administrador</button><button id="player">🎴 Ser jugador</button><p>El primer administrador ocupa el puesto en esta sala. Conserva este navegador para regresar.</p></section>
+ <section id="registration" hidden><h2>Tus cartones</h2><p>Selecciona las 16 cartas de cada cartón en orden de lectura. Se juega a cartón lleno.</p><label>Tu nombre <input id="name" maxlength="40" autocomplete="nickname" /></label><div id="editors"></div><button id="addBoard">+ Agregar segundo cartón</button><button id="register">Guardar nombre y cartones</button></section>
+ <section id="table" hidden><div class="toolbar"><h2 id="round"></h2><span id="counts"></span></div><div id="current"></div><div id="history"></div><div id="controls" hidden><button id="draw">▶ Sacar carta</button><button id="shuffle">⟳ Nueva ronda / barajear</button></div><p id="playerNotice"></p></section>
+ <section id="personal" hidden><h2>Mis cartones registrados</h2><div id="myBoards"></div></section>
+ <section id="monitor" hidden><h2>🛡 Centro VAR · Solo administrador</h2><p>Monitoreo automático de todos los cartones. Las cartas pendientes están en gris.</p><div id="players"></div></section>
+ <section id="var" class="var" hidden aria-live="assertive"><h2>🚨 ¡LOTERÍA! · REVISIÓN VAR</h2><p>Baraja pausada. Revisa la evidencia antes de dar el veredicto.</p><div id="claims"></div></section>
+ <section id="winner" class="winner" hidden aria-live="polite"></section>
+</section>
+<script>
+import QRCode from "qrcode";
+import cards from "../lib/cards.json";
+const $ = (id: string) => document.getElementById(id)!;
+let room = new URL(location.href).searchParams.get("sala");
+if (!room || !/^[a-f0-9]{32}$/.test(room)) {
+  room = crypto.randomUUID().replaceAll("-", "");
+  history.replaceState(null, "", `/?sala=${room}`);
+}
+const invite = new URL(`/?sala=${room}`, location.origin).href;
+const link = $("inviteLink") as HTMLAnchorElement;
+link.href = invite;
+link.textContent = invite;
+void QRCode.toCanvas($("qr"), invite, { width: 180, margin: 2 });
+$("copy").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(invite);
+    $("copy").textContent = "¡Copiado!";
+  } catch {
+    $("error").textContent = "Copia el enlace que aparece arriba.";
+  }
+};
+const selected: string[][] = [[]];
+let state: any = null,
+  busy = false,
+  editing = false;
+const photos = new Map<number, string>();
+const label = (c: string) =>
+  c
+    .replace(/\.(jpg|png|webp|jpeg)$/i, "")
+    .replace(/^\d+-/, "")
+    .replaceAll("-", " ");
+function img(c: string, drawn = true) {
+  const el = document.createElement("img");
+  el.src = `/cartas-sin-borde/${encodeURIComponent(c)}`;
+  el.alt = label(c);
+  el.className = drawn ? "drawn" : "pending";
+  el.loading = "lazy";
+  return el;
+}
+function board(c: string[], drawn: string[]) {
+  const el = document.createElement("div");
+  el.className = "board";
+  c.forEach((card) => el.appendChild(img(card, drawn.includes(card))));
+  return el;
+}
+function editors() {
+  $("editors").replaceChildren();
+  selected.forEach((selection, index) => {
+    const area = document.createElement("article");
+    const title = document.createElement("h3");
+    title.textContent = `Cartón ${index + 1} · ${selection.length}/16`;
+    area.appendChild(title);
+    const uploadLabel = document.createElement("label");
+    uploadLabel.textContent =
+      "Foto de referencia (opcional, solo en este dispositivo) ";
+    const upload = document.createElement("input");
+    upload.type = "file";
+    upload.accept = "image/*";
+    upload.onchange = () => {
+      const file = upload.files?.[0];
+      if (!file) return;
+      const old = photos.get(index);
+      if (old) URL.revokeObjectURL(old);
+      photos.set(index, URL.createObjectURL(file));
+      editors();
+    };
+    uploadLabel.appendChild(upload);
+    area.appendChild(uploadLabel);
+    if (photos.has(index)) {
+      const photo = document.createElement("img");
+      photo.src = photos.get(index)!;
+      photo.alt = `Foto de referencia del cartón ${index + 1}`;
+      photo.className = "reference";
+      area.appendChild(photo);
+    }
+    const preview = document.createElement("div");
+    preview.className = "board";
+    selection.forEach((c) => {
+      const b = document.createElement("button");
+      b.title = `Quitar ${label(c)}`;
+      b.appendChild(img(c));
+      b.onclick = () => {
+        selection.splice(selection.indexOf(c), 1);
+        editors();
+      };
+      preview.appendChild(b);
+    });
+    area.appendChild(preview);
+    if (selection.length < 16) {
+      const picker = document.createElement("div");
+      picker.className = "picker";
+      cards.forEach((c) => {
+        const b = document.createElement("button");
+        b.title = label(c);
+        b.disabled = selection.includes(c);
+        b.appendChild(img(c));
+        b.onclick = () => {
+          selection.push(c);
+          editors();
+        };
+        picker.appendChild(b);
+      });
+      area.appendChild(picker);
+    }
+    if (index === 1) {
+      const remove = document.createElement("button");
+      remove.textContent = "Quitar segundo cartón";
+      remove.onclick = () => {
+        selected.pop();
+        editors();
+      };
+      area.appendChild(remove);
+    }
+    $("editors").appendChild(area);
+  });
+  $("addBoard").hidden = selected.length === 2;
+}
+async function request(data?: any) {
+  if (busy) return;
+  busy = true;
+  document
+    .querySelectorAll<HTMLButtonElement>(
+      "#controls button, #roles button, #register, #claims button",
+    )
+    .forEach((b) => (b.disabled = true));
+  try {
+    const r = await fetch(
+      `/api/rooms/${room}`,
+      data
+        ? {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(data),
+          }
+        : { cache: "no-store" },
+    );
+    const body = (await r.json()) as { error?: string };
+    if (!r.ok) throw new Error(body.error ?? "No se pudo conectar.");
+    const old = state?.drawn.at(-1);
+    state = body;
+    $("error").textContent = "";
+    render();
+    if (
+      data?.action === "draw" &&
+      old !== state.drawn.at(-1) &&
+      "speechSynthesis" in window
+    ) {
+      const speech = new SpeechSynthesisUtterance(label(state.drawn.at(-1)));
+      speech.lang = "es-MX";
+      speechSynthesis.cancel();
+      speechSynthesis.speak(speech);
+    }
+  } catch (e) {
+    $("error").textContent =
+      e instanceof Error ? e.message : "Error de conexión";
+  } finally {
+    busy = false;
+    if (state) render();
+  }
+}
+function render() {
+  const admin = state.role === "admin";
+  const guest = state.role === "guest";
+  edit.hidden = state.role !== "player" || state.drawn.length > 0;
+  $("status").textContent =
+    `${admin ? "Administrador" : guest ? "Elige tu rol" : "Jugador"} · ${state.playerCount} jugadores conectados a la sala`;
+  $("roles").hidden = !guest || editing;
+  ($("admin") as HTMLButtonElement).disabled = busy || state.adminTaken;
+  $("admin").textContent = state.adminTaken
+    ? "Administrador ocupado"
+    : "🎙 Ser administrador";
+  ($("player") as HTMLButtonElement).disabled = busy || state.drawn.length > 0;
+  $("registration").hidden = !editing || state.drawn.length > 0;
+  ($("register") as HTMLButtonElement).disabled = busy;
+  $("table").hidden = guest;
+  $("controls").hidden = !admin;
+  $("monitor").hidden = !admin;
+  $("round").textContent = `Ronda ${state.round}`;
+  $("counts").textContent = `${state.drawn.length} / ${state.total} cartas`;
+  $("current").replaceChildren();
+  if (state.drawn.length) $("current").appendChild(img(state.drawn.at(-1)));
+  else $("current").textContent = "Esperando el inicio de la baraja";
+  $("history").replaceChildren(
+    ...state.drawn
+      .slice(-8)
+      .reverse()
+      .map((c: string) => img(c)),
+  );
+  ($("draw") as HTMLButtonElement).disabled =
+    busy ||
+    state.paused ||
+    state.finished ||
+    state.drawn.length === state.total;
+  ($("shuffle") as HTMLButtonElement).disabled = busy;
+  $("playerNotice").textContent = admin
+    ? ""
+    : state.paused
+      ? "VAR en revisión. Espera el veredicto del administrador."
+      : guest
+        ? "La ronda ya empezó; espera la siguiente para registrarte."
+        : state.drawn.length
+          ? "Tus cartones están bloqueados durante esta ronda."
+          : "Tus cartones están guardados. Puedes editarlos antes de iniciar.";
+  $("players").replaceChildren();
+  $("myBoards").replaceChildren();
+  $("personal").hidden = state.role !== "player";
+  if (state.role === "player")
+    state.players[0].boards.forEach((b: string[], i: number) => {
+      const h = document.createElement("h3");
+      h.textContent = `Cartón ${i + 1}`;
+      $("myBoards").appendChild(h);
+      $("myBoards").appendChild(board(b, b));
+    });
+  state.players.forEach((p: any) => {
+    const article = document.createElement("article");
+    const h = document.createElement("h3");
+    h.textContent = p.name;
+    article.appendChild(h);
+    p.boards.forEach((b: string[], i: number) => {
+      const caption = document.createElement("p");
+      caption.textContent = `Cartón ${i + 1} · ${b.filter((c) => state.drawn.includes(c)).length}/16`;
+      article.appendChild(caption);
+      article.appendChild(board(b, state.drawn));
+    });
+    if (admin) $("players").appendChild(article);
+  });
+  $("var").hidden = !admin || !state.paused;
+  $("claims").replaceChildren();
+  if (admin)
+    state.claims
+      .filter((c: any) => c.status === "pending")
+      .forEach((c: any) => {
+        const article = document.createElement("article");
+        const h = document.createElement("h3");
+        h.textContent = `${c.name} · Cartón ${c.board + 1}`;
+        article.appendChild(h);
+        article.appendChild(board(c.cards, c.drawn));
+        const p = document.createElement("p");
+        p.textContent = `Evidencia al salir la carta ${c.drawn.length}: ${c.cards.filter((v: string) => c.drawn.includes(v)).length}/16 coincidencias`;
+        article.appendChild(p);
+        ["confirmed", "rejected"].forEach((verdict) => {
+          const b = document.createElement("button");
+          b.textContent =
+            verdict === "confirmed" ? "✓ Confirmar ganador" : "✕ Rechazar";
+          b.disabled = busy;
+          b.onclick = () =>
+            void request({ action: "review", id: c.id, verdict });
+          article.appendChild(b);
+        });
+        $("claims").appendChild(article);
+      });
+  const winners = state.claims.filter((c: any) => c.status === "confirmed");
+  $("winner").hidden = !winners.length;
+  $("winner").textContent =
+    `🏆 Ganador confirmado: ${winners.map((c: any) => `${c.name} (cartón ${c.board + 1})`).join(", ")}. ¡LOTERÍA!`;
+}
+$("admin").onclick = () => void request({ action: "admin" });
+$("player").onclick = () => {
+  editing = true;
+  editors();
+  render();
+};
+$("addBoard").onclick = () => {
+  selected.push([]);
+  editors();
+};
+$("register").onclick = async () => {
+  await request({
+    action: "register",
+    name: ($("name") as HTMLInputElement).value,
+    boards: selected,
+  });
+  if (state?.role === "player" && !$("error").textContent) {
+    editing = false;
+    render();
+  }
+};
+$("draw").onclick = () => void request({ action: "draw" });
+$("shuffle").onclick = () => {
+  if (
+    confirm(
+      "¿Barajear e iniciar una nueva ronda? Se conservarán los cartones y se borrará el resultado anterior.",
+    )
+  )
+    void request({ action: "shuffle" });
+};
+const edit = document.createElement("button");
+edit.textContent = "Editar mis cartones";
+edit.onclick = () => {
+  const p = state.players[0];
+  selected.splice(0, selected.length, ...p.boards.map((b: string[]) => [...b]));
+  ($("name") as HTMLInputElement).value = p.name;
+  editing = true;
+  editors();
+  render();
+};
+$("table").appendChild(edit);
+setInterval(() => {
+  if (!document.hidden) void request();
+}, 2000);
+void request();
+</script>
+<style is:global>
+.room {
+  color: #e9eef9;
+  background: radial-gradient(ellipse at top, #18364c, #080e1b 65%);
+  min-height: 100vh;
+  padding: 24px;
+  box-sizing: border-box;
+  font-family: system-ui, sans-serif;
+}
+.room > * {
+  max-width: 1000px;
+  margin: 0 auto 24px;
+}
+.room [hidden] {
+  display: none !important;
+}
+.room h1 {
+  font-size: clamp(28px, 5vw, 48px);
+  margin: 8px 0;
+}
+.room h2 {
+  margin-top: 0;
+}
+.eyebrow {
+  color: #5de6c1;
+  letter-spacing: 3px;
+  font-size: 12px;
+}
+.room p {
+  color: #b6c5d9;
+  line-height: 1.5;
+}
+.invite {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  padding: 20px;
+  background: #ffffff09;
+  border: 1px solid #ffffff22;
+  border-radius: 20px;
+}
+.invite canvas {
+  border-radius: 12px;
+}
+.invite a {
+  display: block;
+  color: #7dd3fc;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.room button {
+  background: #23344e;
+  color: white;
+  border: 1px solid #64748b;
+  padding: 12px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  margin: 4px;
+  font-size: 15px;
+}
+.room button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.room button:focus-visible,
+.room input:focus-visible {
+  outline: 3px solid #5de6c1;
+}
+.room input {
+  padding: 12px;
+  border-radius: 8px;
+  font: inherit;
+  max-width: 90%;
+}
+#error {
+  color: #fda4af;
+}
+#draw,
+#register {
+  background: #087d68;
+}
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+#current {
+  height: 380px;
+  text-align: center;
+  display: grid;
+  place-items: center;
+}
+#current img {
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+#history {
+  display: flex;
+  gap: 8px;
+  overflow: auto;
+  margin: 16px 0;
+}
+#history img {
+  height: 85px;
+  border-radius: 5px;
+}
+.board {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  max-width: 360px;
+}
+.board img {
+  width: 100%;
+  aspect-ratio: 3/4;
+  object-fit: contain;
+  border-radius: 5px;
+}
+.board button {
+  padding: 0;
+  margin: 0;
+}
+.pending {
+  filter: grayscale(1);
+  opacity: 0.35;
+}
+.drawn {
+  box-shadow: 0 0 0 2px #34d399;
+}
+.reference {
+  display: block;
+  max-width: 100%;
+  max-height: 300px;
+  margin: 16px 0;
+}
+.picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
+  gap: 4px;
+  margin: 16px 0;
+}
+.picker button {
+  padding: 2px;
+  margin: 0;
+}
+.picker img {
+  width: 100%;
+  box-shadow: none;
+}
+#players {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+}
+#players article,
+#editors article {
+  background: #ffffff08;
+  padding: 16px;
+  border-radius: 12px;
+  margin: 12px 0;
+}
+.var {
+  border: 2px solid #fbbf24;
+  border-radius: 16px;
+  padding: 20px;
+  box-sizing: border-box;
+  background: #493513;
+}
+.var h2 {
+  color: #fde68a;
+}
+.winner {
+  padding: 24px;
+  border: 2px solid #34d399;
+  border-radius: 16px;
+  font-size: 24px;
+  background: #064e3b;
+  box-sizing: border-box;
+}
+@media (max-width: 600px) {
+  .room {
+    padding: 16px;
+  }
+  .invite {
+    flex-direction: column;
+    text-align: center;
+  }
+  #current {
+    height: 300px;
+  }
+  .toolbar {
+    display: block;
+  }
+}
+</style>
