@@ -1,0 +1,236 @@
+<main class="printPage">
+ <a id="back" href="/">← Volver al juego</a>
+ <header><span>DEL VAR A TU MESA</span><h1>Cartones para jugar de verdad</h1><p>Imprime, reparte y juega con fichas. El VAR sigue cada cartón virtualmente.</p></header>
+ <p id="printError" role="alert"></p>
+ <section id="scan" hidden>
+  <h2>Tu cartón está listo para el VAR</h2><p id="scannedCode"></p><div id="scannedBoard" class="printBoard"></div>
+  <label for="roomInvite">Enlace o código de la sala</label><input id="roomInvite" type="text" placeholder="Pega el enlace compartido por el administrador" />
+  <button id="joinRoom">Continuar al registro</button><p>El QR carga las cartas, pero tú debes confirmar tu nombre y guardar el cartón antes de iniciar la ronda.</p>
+ </section>
+ <section id="generator">
+  <h2>Crear y descargar</h2><p id="printScope"></p><label id="bindRoomLabel" hidden><input id="bindRoom" type="checkbox" checked /> Vincular los QR a esta sala (desmarca para cartones reutilizables en otras salas)</label>
+  <label for="quantity">¿Cuántos cartones?</label><input id="quantity" type="number" min="1" max="100" step="1" value="10" />
+  <button id="generate">Generar cartones</button><button id="download" disabled>Descargar PDF</button>
+  <p id="printStatus" role="status" aria-live="polite">De 1 a 100 cartones. Una página por cartón, papel Carta.</p>
+  <p>16 cartas diferentes por cartón, sin combinaciones repetidas dentro del lote. Cada QR conserva exactamente el orden de las cartas.</p>
+  <div id="printPreview"></div>
+ </section>
+</main>
+<script>
+import {
+  generateBoards,
+  decodeBoard,
+  boardCode,
+  boardLink,
+  validRoom,
+  roomFromInvite,
+  type PrintedBoard,
+} from "../lib/printable-boards";
+const $ = (id: string) => document.getElementById(id)!;
+const params = new URL(location.href).searchParams;
+const room = validRoom(params.get("sala")) ? params.get("sala")! : null;
+const token = params.get("carton");
+$("bindRoomLabel").hidden = !room;
+let boards: PrintedBoard[] = [],
+  downloading = false;
+const back = $("back") as HTMLAnchorElement;
+if (room) back.href = `/?sala=${room}`;
+$("printScope").textContent = room
+  ? "Los QR llevarán a esta sala y cargarán el cartón automáticamente al registro."
+  : "Cartones reutilizables: al escanear, el jugador podrá elegir la sala pegando su enlace.";
+function preview(board: PrintedBoard) {
+  const article = document.createElement("article");
+  const h = document.createElement("h3");
+  h.textContent = board.code;
+  article.appendChild(h);
+  const grid = document.createElement("div");
+  grid.className = "printBoard";
+  board.cards.forEach((c) => {
+    const image = document.createElement("img");
+    image.src = `/cartas-sin-borde/${encodeURIComponent(c)}`;
+    image.alt = c.replace(/\.(jpg|png)$/i, "").replaceAll("-", " ");
+    image.loading = "lazy";
+    grid.appendChild(image);
+  });
+  article.appendChild(grid);
+  return article;
+}
+if (token) {
+  $("generator").hidden = true;
+  $("scan").hidden = false;
+  try {
+    const cards = decodeBoard(token);
+    $("scannedCode").textContent = boardCode(token);
+    $("scannedBoard").replaceChildren(
+      preview({ cards, token, code: boardCode(token) }),
+    );
+    $("joinRoom").onclick = () => {
+      try {
+        const target = roomFromInvite(
+          ($("roomInvite") as HTMLInputElement).value,
+          location.origin,
+        );
+        location.assign(boardLink(token, location.origin, target));
+      } catch (e) {
+        $("printError").textContent = (e as Error).message;
+      }
+    };
+  } catch (e) {
+    $("printError").textContent = (e as Error).message;
+    ($("joinRoom") as HTMLButtonElement).disabled = true;
+  }
+}
+$("generate").onclick = () => {
+  try {
+    if (downloading) return;
+    boards = generateBoards(Number(($("quantity") as HTMLInputElement).value));
+    $("printError").textContent = "";
+    $("printStatus").textContent =
+      `${boards.length} cartones listos. Vista previa de los primeros ${Math.min(boards.length, 4)}.`;
+    $("printPreview").replaceChildren(...boards.slice(0, 4).map(preview));
+    ($("download") as HTMLButtonElement).disabled = false;
+  } catch (e) {
+    $("printError").textContent = (e as Error).message;
+  }
+};
+$("download").onclick = async () => {
+  if (downloading || !boards.length) return;
+  downloading = true;
+  ($("generate") as HTMLButtonElement).disabled = true;
+  ($("download") as HTMLButtonElement).disabled = true;
+  $("printError").textContent = "";
+  $("printStatus").textContent = "Preparando las imágenes y el PDF…";
+  try {
+    const { createBoardsPdf } = await import("../lib/boards-pdf");
+    const bytes = await createBoardsPdf(
+      boards,
+      location.origin,
+      ($("bindRoom") as HTMLInputElement).checked ? room : null,
+      undefined,
+      (done, total) => {
+        $("printStatus").textContent =
+          `Preparando PDF: ${done}/${total} cartones…`;
+      },
+    );
+    const url = URL.createObjectURL(
+      new Blob([new Uint8Array(bytes)], { type: "application/pdf" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `loteria-${boards.length}-cartones.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    $("printStatus").textContent =
+      "PDF listo. Imprime en papel Carta al 100%, sin ajustar el tamaño.";
+  } catch (e) {
+    $("printError").textContent = (e as Error).message;
+    $("printStatus").textContent =
+      "No se pudo generar el PDF. Puedes intentar de nuevo sin perder tus cartones.";
+  } finally {
+    downloading = false;
+    ($("generate") as HTMLButtonElement).disabled = false;
+    ($("download") as HTMLButtonElement).disabled = !boards.length;
+  }
+};
+</script>
+<style is:global>
+.printPage {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 32px 20px;
+  background: #0b1424;
+  color: #eef4fb;
+  font-family: system-ui, sans-serif;
+}
+.printPage > * {
+  max-width: 1000px;
+  margin: 0 auto 24px;
+}
+.printPage a {
+  display: block;
+  color: #7dd3fc;
+}
+.printPage header span {
+  color: #5de6c1;
+  font-size: 12px;
+  letter-spacing: 3px;
+}
+.printPage h1 {
+  font-size: clamp(28px, 5vw, 44px);
+}
+.printPage p {
+  color: #b6c5d9;
+  line-height: 1.5;
+}
+.printPage [hidden] {
+  display: none !important;
+}
+.printPage section {
+  padding: 24px;
+  border: 1px solid #ffffff22;
+  border-radius: 16px;
+  box-sizing: border-box;
+}
+.printPage input {
+  padding: 12px;
+  border-radius: 8px;
+  font: inherit;
+  max-width: 90%;
+  display: block;
+  margin: 10px 0;
+}
+.printPage button {
+  border: 1px solid #64748b;
+  border-radius: 10px;
+  padding: 12px 16px;
+  background: #087d68;
+  color: white;
+  font: inherit;
+  cursor: pointer;
+  margin: 4px;
+}
+.printPage button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.printPage :focus-visible {
+  outline: 3px solid #5de6c1;
+}
+#printError {
+  color: #fda4af;
+}
+#printPreview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 24px;
+}
+.printBoard {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+  max-width: 360px;
+}
+.printBoard img {
+  width: 100%;
+  aspect-ratio: 3/4;
+  object-fit: contain;
+  background: white;
+}
+#scannedBoard {
+  display: block;
+}
+#roomInvite {
+  width: 90%;
+}
+#bindRoom {
+  display: inline-block;
+  width: auto;
+  margin-right: 8px;
+}
+#bindRoomLabel {
+  display: block;
+  margin: 16px 0;
+}
+</style>

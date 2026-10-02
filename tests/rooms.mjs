@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { generateBoards, decodeBoard } from "../src/lib/printable-boards.ts";
 import { randomUUID } from "node:crypto";
 const origin = process.env.TEST_ORIGIN ?? "http://localhost:8787";
 const room = randomUUID().replaceAll("-", "");
@@ -21,6 +22,8 @@ async function call(who, action, target = room) {
 const cards = JSON.parse(
   await readFile(new URL("../src/lib/cards.json", import.meta.url)),
 );
+const printed = generateBoards(1)[0];
+const physicalBoard = decodeBoard(printed.token);
 await Promise.all(["a", "b", "p", "q"].map((w) => call(w)));
 const results = await Promise.all(
   ["a", "b"].map((w) => call(w, { action: "admin" })),
@@ -47,7 +50,7 @@ assert.equal(
     await call("p", {
       action: "register",
       name: "Ana",
-      boards: [cards.slice(0, 16)],
+      boards: [physicalBoard],
     })
   ).status,
   200,
@@ -57,7 +60,7 @@ assert.equal(
     await call("q", {
       action: "register",
       name: "Luis",
-      boards: [cards.slice(0, 16)],
+      boards: [physicalBoard],
     })
   ).status,
   200,
@@ -74,7 +77,7 @@ assert.equal(
     await call("p", {
       action: "register",
       name: "Cheat",
-      boards: [cards.slice(0, 16)],
+      boards: [physicalBoard],
     })
   ).status,
   400,
@@ -97,6 +100,11 @@ assert.equal(
   "pause during VAR",
 );
 const claim = game.claims.find((c) => c.status === "pending");
+assert.deepEqual(
+  claim.cards,
+  physicalBoard,
+  "VAR evidence matches the physical QR board in order",
+);
 assert.equal(claim.cards.filter((c) => claim.drawn.includes(c)).length, 16);
 assert.equal(
   (await call("p")).body.claims.length,
