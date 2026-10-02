@@ -2,8 +2,10 @@
  <header><span class="eyebrow">LOTERÍA · MULTIJUGADOR</span><h1>La mesa está lista</h1><p id="status" role="status">Conectando con la sala…</p></header>
  <aside class="invite"><canvas id="qr" aria-label="Código QR para entrar a la sala"></canvas><div><h2>Escanea y únete</h2><p>Un administrador. Todos los demás, jugadores.</p><a id="inviteLink"></a><button id="copy">Copiar enlace</button></div></aside>
  <p id="error" role="alert"></p>
+ <p id="qrImportStatus" role="status" hidden></p>
+ <a id="printBoardsLink" class="printBoardsLink" href="/cartones">🖨 Crear cartones físicos y descargar PDF</a>
  <section id="roles" hidden><h2>¿Cómo vas a jugar?</h2><button id="admin">🎙 Ser administrador</button><button id="player">🎴 Ser jugador</button><p>El primer administrador ocupa el puesto en esta sala. Conserva este navegador para regresar.</p></section>
- <section id="registration" hidden><h2>Tus cartones</h2><p>Selecciona las 16 cartas de cada cartón en orden de lectura. Se juega a cartón lleno.</p><label>Tu nombre <input id="name" maxlength="40" autocomplete="nickname" /></label><div id="editors"></div><button id="addBoard">+ Agregar segundo cartón</button><button id="register">Guardar nombre y cartones</button></section>
+ <section id="registration" hidden><h2>Tus cartones</h2><p>Selecciona las 16 cartas de cada cartón en orden de lectura. Se juega a cartón lleno.</p><label>Tu nombre <input id="name" maxlength="40" autocomplete="nickname" /></label><div class="importControls"><label for="boardQrInput">Agregar cartón con QR</label><input id="boardQrInput" type="text" placeholder="Pega el enlace del QR o código v1.…" /><button id="importBoardBtn">Cargar cartón</button></div><div id="editors"></div><button id="addBoard">+ Agregar segundo cartón</button><button id="register">Guardar nombre y cartones</button></section>
  <section id="table" hidden><div class="toolbar"><h2 id="round"></h2><span id="counts"></span></div><div id="current"></div><div id="history"></div><div id="controls" hidden><button id="draw">▶ Sacar carta</button><button id="shuffle">⟳ Nueva ronda / barajear</button></div><p id="playerNotice"></p></section>
  <section id="personal" hidden><h2>Mis cartones registrados</h2><div id="myBoards"></div></section>
  <section id="monitor" hidden><h2>🛡 Centro VAR · Solo administrador</h2><p>Monitoreo automático de todos los cartones. Las cartas pendientes están en gris.</p><div id="players"></div></section>
@@ -13,12 +15,21 @@
 <script>
 import QRCode from "qrcode";
 import cards from "../lib/cards.json";
+import {
+  encodeBoard,
+  boardCode,
+  tokenFromInput,
+  mergePrintedBoard,
+} from "../lib/printable-boards";
 const $ = (id: string) => document.getElementById(id)!;
-let room = new URL(location.href).searchParams.get("sala");
+const roomParams = new URL(location.href).searchParams;
+let pendingBoard = roomParams.get("carton");
+let room = roomParams.get("sala");
 if (!room || !/^[a-f0-9]{32}$/.test(room)) {
   room = crypto.randomUUID().replaceAll("-", "");
   history.replaceState(null, "", `/?sala=${room}`);
 }
+($("printBoardsLink") as HTMLAnchorElement).href = `/cartones?sala=${room}`;
 const invite = new URL(`/?sala=${room}`, location.origin).href;
 const link = $("inviteLink") as HTMLAnchorElement;
 link.href = invite;
@@ -49,6 +60,13 @@ function img(c: string, drawn = true) {
   el.className = drawn ? "drawn" : "pending";
   el.loading = "lazy";
   return el;
+}
+function printedCode(cards: string[]) {
+  try {
+    return ` · ${boardCode(encodeBoard(cards))}`;
+  } catch {
+    return "";
+  }
 }
 function board(c: string[], drawn: string[]) {
   const el = document.createElement("div");
@@ -151,6 +169,21 @@ async function request(data?: any) {
     if (!r.ok) throw new Error(body.error ?? "No se pudo conectar.");
     const old = state?.drawn.at(-1);
     state = body;
+    if (pendingBoard) {
+      $("qrImportStatus").hidden = false;
+      if (state.drawn.length)
+        $("qrImportStatus").textContent =
+          "La ronda ya comenzó. Tu cartón podrá registrarse en la siguiente ronda.";
+      else {
+        const token = pendingBoard;
+        pendingBoard = null;
+        try {
+          importPrintedBoard(token);
+        } catch (e) {
+          $("qrImportStatus").textContent = (e as Error).message;
+        }
+      }
+    }
     $("error").textContent = "";
     render();
     if (
@@ -171,6 +204,49 @@ async function request(data?: any) {
     if (state) render();
   }
 }
+function importPrintedBoard(token: string) {
+  if (!state) throw new Error("Espera a que la sala se conecte.");
+  if (state.role === "admin")
+    throw new Error(
+      "El administrador no puede registrar cartones. Escanea con el dispositivo del jugador.",
+    );
+  if (state.drawn.length)
+    throw new Error(
+      "La ronda comenzó. Espera a la siguiente para registrar tu cartón.",
+    );
+  if (!editing && state.role === "player") {
+    const p = state.players[0];
+    selected.splice(
+      0,
+      selected.length,
+      ...p.boards.map((b: string[]) => [...b]),
+    );
+    ($("name") as HTMLInputElement).value = p.name;
+  }
+  const merged = mergePrintedBoard(selected, token);
+  selected.splice(0, selected.length, ...merged);
+  editing = true;
+  editors();
+  $("qrImportStatus").hidden = false;
+  $("qrImportStatus").textContent =
+    `Cartón ${boardCode(token)} cargado. Confirma tu nombre y guarda para activar el VAR.`;
+}
+$("importBoardBtn").onclick = () => {
+  try {
+    importPrintedBoard(
+      tokenFromInput(
+        ($("boardQrInput") as HTMLInputElement).value,
+        location.origin,
+        room!,
+      ),
+    );
+    ($("boardQrInput") as HTMLInputElement).value = "";
+    render();
+  } catch (e) {
+    $("qrImportStatus").hidden = false;
+    $("qrImportStatus").textContent = (e as Error).message;
+  }
+};
 function render() {
   const admin = state.role === "admin";
   const guest = state.role === "guest";
@@ -220,7 +296,7 @@ function render() {
   if (state.role === "player")
     state.players[0].boards.forEach((b: string[], i: number) => {
       const h = document.createElement("h3");
-      h.textContent = `Cartón ${i + 1}`;
+      h.textContent = `Cartón ${i + 1}${printedCode(b)}`;
       $("myBoards").appendChild(h);
       $("myBoards").appendChild(board(b, b));
     });
@@ -231,7 +307,7 @@ function render() {
     article.appendChild(h);
     p.boards.forEach((b: string[], i: number) => {
       const caption = document.createElement("p");
-      caption.textContent = `Cartón ${i + 1} · ${b.filter((c) => state.drawn.includes(c)).length}/16`;
+      caption.textContent = `Cartón ${i + 1}${printedCode(b)} · ${b.filter((c) => state.drawn.includes(c)).length}/16`;
       article.appendChild(caption);
       article.appendChild(board(b, state.drawn));
     });
@@ -245,7 +321,7 @@ function render() {
       .forEach((c: any) => {
         const article = document.createElement("article");
         const h = document.createElement("h3");
-        h.textContent = `${c.name} · Cartón ${c.board + 1}`;
+        h.textContent = `${c.name} · Cartón ${c.board + 1}${printedCode(c.cards)}`;
         article.appendChild(h);
         article.appendChild(board(c.cards, c.drawn));
         const p = document.createElement("p");
@@ -285,6 +361,12 @@ $("register").onclick = async () => {
   });
   if (state?.role === "player" && !$("error").textContent) {
     editing = false;
+    if (roomParams.has("carton")) {
+      const clean = new URL(location.href);
+      clean.searchParams.delete("carton");
+      history.replaceState(null, "", clean);
+    }
+    $("qrImportStatus").hidden = true;
     render();
   }
 };
@@ -363,6 +445,21 @@ void request();
   overflow-wrap: anywhere;
   font-size: 13px;
   margin-bottom: 12px;
+}
+.printBoardsLink {
+  display: block;
+  color: #7dd3fc;
+}
+.importControls {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid #ffffff22;
+  border-radius: 12px;
+}
+.importControls input {
+  display: block;
+  width: 90%;
+  margin-top: 10px;
 }
 .room button {
   background: #23344e;
