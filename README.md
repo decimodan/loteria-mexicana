@@ -45,3 +45,5 @@ Desde una sala los QR apuntan a esa sala; puedes desmarcar **Vincular los QR a e
 - El servidor sigue validando cada cartón y bloqueando registros/cambios durante la ronda. Los PDF se generan localmente; no se guardan lotes en el servidor. El enlace QR depende de que el dominio del sitio siga disponible.
 
 Pruebas del generador, QR y PDF: `npm run test:print` (Node >=22.12). Las pruebas integradas de salas también registran un cartón generado desde su QR y comprueban que la evidencia VAR coincida.
+
+El PDF aprovecha la hoja Carta con márgenes de 6.35 mm: cuadrícula hasta el margen inferior y QR en la esquina superior derecha del encabezado, sin pie vacío. Imprime al 100%; no requiere impresión sin bordes.
