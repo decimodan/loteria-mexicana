@@ -214,13 +214,13 @@ console.log(
   "PASS: browser image optimization size, JPEG format, fallback, cleanup and fetch/canvas failures.",
 );
 
-assert.equal(BOARD_PDF_LAYOUT.margin, 18);
-assert.equal(BOARD_PDF_LAYOUT.pageWidth - BOARD_PDF_LAYOUT.margin * 2, 576);
+assert.equal(BOARD_PDF_LAYOUT.margin, 0);
+assert.equal(BOARD_PDF_LAYOUT.pageWidth - BOARD_PDF_LAYOUT.margin * 2, 612);
 assert.equal(
   BOARD_PDF_LAYOUT.pageHeight -
     BOARD_PDF_LAYOUT.gridTop -
     BOARD_PDF_LAYOUT.margin,
-  670,
+  728,
 );
 assert.ok(
   BOARD_PDF_LAYOUT.qrTop + BOARD_PDF_LAYOUT.qrSize < BOARD_PDF_LAYOUT.gridTop,

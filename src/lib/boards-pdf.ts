@@ -7,14 +7,14 @@ import {
   type PrintedBoard,
 } from "./printable-boards.ts";
 
-// Letter page: only 6.35mm print margins, all remaining body space is the grid.
+// Borderless Letter page: compact single-row header; grid runs to all page edges.
 export const BOARD_PDF_LAYOUT = {
   pageWidth: 612,
   pageHeight: 792,
-  margin: 18,
-  gridTop: 104,
-  qrSize: 84,
-  qrTop: 10,
+  margin: 0,
+  gridTop: 64,
+  qrSize: 60,
+  qrTop: 2,
 } as const;
 
 // 800px preserves print detail on the enlarged full-page cards; reuse assets per PDF.
@@ -96,8 +96,8 @@ export async function createBoardsPdf(
         color: navy,
       });
     const number = board.number ?? index + 1;
-    text("LOTERIA MEXA", BOARD_PDF_LAYOUT.margin, 24, 28, true);
-    text(`CARTÓN ${number}`, BOARD_PDF_LAYOUT.margin, 62, 17, true);
+    text("LOTERIA MEXA", 12, 20, 22, true);
+    text(`CARTÓN ${number}`, 246, 25, 14, true);
     const left = BOARD_PDF_LAYOUT.margin,
       top = BOARD_PDF_LAYOUT.gridTop,
       cellW = (BOARD_PDF_LAYOUT.pageWidth - left * 2) / 4,
@@ -122,21 +122,13 @@ export async function createBoardsPdf(
         width: cellW,
         height: cellH,
       });
-      page.drawRectangle({
-        x,
-        y: 792 - y - cellH,
-        width: cellW,
-        height: cellH,
-        borderColor: rgb(0.96, 0.94, 0.88),
-        borderWidth: 2,
-      });
     }
     const url = boardLink(board.token, origin, room, number);
     const qr = QRCode.create(url, { errorCorrectionLevel: "M" });
     const quiet = 4,
       qrSize = BOARD_PDF_LAYOUT.qrSize,
       unit = qrSize / (qr.modules.size + quiet * 2);
-    const qrX = BOARD_PDF_LAYOUT.pageWidth - BOARD_PDF_LAYOUT.margin - qrSize,
+    const qrX = BOARD_PDF_LAYOUT.pageWidth - qrSize - 2,
       qrTop = BOARD_PDF_LAYOUT.qrTop;
     for (let row = 0; row < qr.modules.size; row++)
       for (let col = 0; col < qr.modules.size; col++) {
