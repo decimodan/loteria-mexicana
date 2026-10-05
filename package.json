@@ -15,7 +15,8 @@
 		"cf-typegen": "wrangler types",
 		"check": "astro check",
 		"test:rooms": "node --experimental-strip-types tests/rooms.mjs",
-		"test:print": "node --experimental-strip-types tests/printable-boards.mjs"
+		"test:print": "node --experimental-strip-types tests/printable-boards.mjs",
+		"test:short": "node --experimental-strip-types tests/short-boards.mjs"
 	},
 	"dependencies": {
 		"@astrojs/cloudflare": "^13.1.9",

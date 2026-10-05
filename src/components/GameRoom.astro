@@ -15,12 +15,8 @@
 <script>
 import QRCode from "qrcode";
 import cards from "../lib/cards.json";
-import {
-  parseBoardNumber,
-  numberFromInput,
-  tokenFromInput,
-  mergePrintedBoard,
-} from "../lib/printable-boards";
+import { parseBoardNumber, mergePrintedBoard } from "../lib/printable-boards";
+import { resolveBoardInput } from "../lib/short-boards";
 const $ = (id: string) => document.getElementById(id)!;
 const roomParams = new URL(location.href).searchParams;
 let pendingBoard = roomParams.get("carton");
@@ -236,21 +232,23 @@ function importPrintedBoard(token: string, number: number | null = null) {
   $("qrImportStatus").textContent =
     `Cartón${number ? ` ${number}` : ""} cargado. Confirma tu nombre y guarda para activar el VAR.`;
 }
-$("importBoardBtn").onclick = () => {
+$("importBoardBtn").onclick = async () => {
+  const button = $("importBoardBtn") as HTMLButtonElement;
+  button.disabled = true;
   try {
-    importPrintedBoard(
-      tokenFromInput(
-        ($("boardQrInput") as HTMLInputElement).value,
-        location.origin,
-        room!,
-      ),
-      numberFromInput(($("boardQrInput") as HTMLInputElement).value),
+    const { token, number } = await resolveBoardInput(
+      ($("boardQrInput") as HTMLInputElement).value,
+      location.origin,
+      room!,
     );
+    importPrintedBoard(token, number);
     ($("boardQrInput") as HTMLInputElement).value = "";
     render();
   } catch (e) {
     $("qrImportStatus").hidden = false;
     $("qrImportStatus").textContent = (e as Error).message;
+  } finally {
+    button.disabled = false;
   }
 };
 function render() {
