@@ -27,6 +27,7 @@ import {
   roomFromInvite,
   type PrintedBoard,
 } from "../lib/printable-boards";
+import { saveShortBoards } from "../lib/short-boards";
 const $ = (id: string) => document.getElementById(id)!;
 const params = new URL(location.href).searchParams;
 const room = validRoom(params.get("sala")) ? params.get("sala")! : null;
@@ -109,15 +110,21 @@ $("download").onclick = async () => {
   $("printStatus").textContent = "Preparando las imágenes y el PDF…";
   try {
     const { createBoardsPdf } = await import("../lib/boards-pdf");
+    $("printStatus").textContent = "Guardando cartones para sus QR cortos…";
+    const targetRoom = ($("bindRoom") as HTMLInputElement).checked
+      ? room
+      : null;
+    const qrLinks = await saveShortBoards(boards, location.origin, targetRoom);
     const bytes = await createBoardsPdf(
       boards,
       location.origin,
-      ($("bindRoom") as HTMLInputElement).checked ? room : null,
+      targetRoom,
       undefined,
       (done, total) => {
         $("printStatus").textContent =
           `Preparando PDF: ${done}/${total} cartones…`;
       },
+      qrLinks,
     );
     const url = URL.createObjectURL(
       new Blob([new Uint8Array(bytes)], { type: "application/pdf" }),

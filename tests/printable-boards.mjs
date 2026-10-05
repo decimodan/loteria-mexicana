@@ -70,7 +70,7 @@ for (const token of [
 ])
   assert.throws(() => decodeBoard(token));
 assert.throws(() => encodeBoard(boards[0].cards.slice(0, 15)));
-const origin = "https://loteria.example";
+const origin = "https://loteria-mexicana.example.workers.dev";
 const room = "a".repeat(32);
 const url = boardLink(boards[0].token, origin, room);
 assert.equal(new URL(url).searchParams.get("sala"), room);
@@ -97,6 +97,9 @@ const first = {
 const second = boards[1];
 let loaded = 0,
   progress = 0;
+const qrLinks = ["AbCdEf012345", "ZyXwVu987654"].map(
+  (id) => `https://loteria-mexicana.example.workers.dev/c/${id}`,
+);
 const bytes = await createBoardsPdf(
   [first, second],
   origin,
@@ -114,6 +117,7 @@ const bytes = await createBoardsPdf(
   (done) => {
     progress = done;
   },
+  qrLinks,
 );
 const doc = await PDFDocument.load(bytes);
 assert.equal(doc.getPageCount(), 2);
@@ -123,13 +127,7 @@ assert.equal(loaded, new Set([...first.cards, ...second.cards]).size);
 if (process.env.PDF_QA_OUTPUT) {
   await mkdir("tmp/pdfs", { recursive: true });
   await writeFile(process.env.PDF_QA_OUTPUT, bytes);
-  await writeFile(
-    "tmp/pdfs/expected-qr.json",
-    JSON.stringify([
-      boardLink(first.token, origin, room, first.number ?? 1),
-      boardLink(second.token, origin, room, second.number ?? 2),
-    ]),
-  );
+  await writeFile("tmp/pdfs/expected-qr.json", JSON.stringify(qrLinks));
 }
 await assert.rejects(() =>
   createBoardsPdf([first], origin, room, async () => {
@@ -220,7 +218,7 @@ assert.equal(
   BOARD_PDF_LAYOUT.pageHeight -
     BOARD_PDF_LAYOUT.gridTop -
     BOARD_PDF_LAYOUT.margin,
-  690,
+  710,
 );
 assert.ok(
   BOARD_PDF_LAYOUT.qrTop + BOARD_PDF_LAYOUT.qrSize < BOARD_PDF_LAYOUT.gridTop,

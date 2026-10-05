@@ -12,10 +12,10 @@ export const BOARD_PDF_LAYOUT = {
   pageWidth: 612,
   pageHeight: 792,
   margin: 18,
-  gridTop: 84,
+  gridTop: 64,
   gutter: 6,
-  qrSize: 60,
-  qrTop: 12,
+  qrSize: 48,
+  qrTop: 8,
 } as const;
 
 // 800px preserves print detail on the enlarged full-page cards; reuse assets per PDF.
@@ -62,6 +62,7 @@ export async function createBoardsPdf(
   room: string | null,
   loadImage: (filename: string) => Promise<Uint8Array> = loadPrintImage,
   progress: (completed: number, total: number) => void = () => {},
+  qrLinks?: string[],
 ) {
   if (!boards.length || boards.length > MAX_PRINT_BOARDS)
     throw new Error("El PDF requiere entre 1 y 100 cartones.");
@@ -69,6 +70,20 @@ export async function createBoardsPdf(
     if (decodeBoard(board.token).join("|") !== board.cards.join("|"))
       throw new Error("Las cartas del QR no coinciden con el cartón.");
   }
+  if (
+    qrLinks &&
+    (qrLinks.length !== boards.length ||
+      qrLinks.some((link) => {
+        const url = new URL(link);
+        return (
+          url.origin !== new URL(origin).origin ||
+          !/^\/c\/[A-Za-z0-9_-]{12}$/.test(url.pathname) ||
+          !!url.search ||
+          !!url.hash
+        );
+      }))
+  )
+    throw new Error("Enlaces cortos inválidos.");
   const pdf = await PDFDocument.create();
   pdf.setTitle("Cartones físicos de Loteria Mexa");
   pdf.setCreator("Loteria Mexa");
@@ -100,12 +115,12 @@ export async function createBoardsPdf(
     const brand = "Loteria Mexa";
     text(
       brand,
-      (BOARD_PDF_LAYOUT.pageWidth - bold.widthOfTextAtSize(brand, 22)) / 2,
-      29,
-      22,
+      (BOARD_PDF_LAYOUT.pageWidth - bold.widthOfTextAtSize(brand, 18)) / 2,
+      23,
+      18,
       true,
     );
-    text(`CARTÓN ${number}`, BOARD_PDF_LAYOUT.margin, 33, 14, true);
+    text(`CARTÓN ${number}`, BOARD_PDF_LAYOUT.margin, 25, 12, true);
     const left = BOARD_PDF_LAYOUT.margin,
       top = BOARD_PDF_LAYOUT.gridTop,
       cellW =
@@ -138,7 +153,8 @@ export async function createBoardsPdf(
         height: cellH,
       });
     }
-    const url = boardLink(board.token, origin, room, number);
+    const url =
+      qrLinks?.[index] ?? boardLink(board.token, origin, room, number);
     const qr = QRCode.create(url, { errorCorrectionLevel: "M" });
     const quiet = 4,
       qrSize = BOARD_PDF_LAYOUT.qrSize,
