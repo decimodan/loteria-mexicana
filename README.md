@@ -49,4 +49,4 @@ Pruebas de enlaces cortos con Wrangler activo: `npm run test:short`.
 
 Pruebas del generador, QR y PDF: `npm run test:print` (Node >=22.12). Las pruebas integradas de salas también registran un cartón generado desde su QR y comprueban que la evidencia VAR coincida.
 
-El PDF sigue el estilo de cartón tradicional: márgenes blancos de 6.35 mm y separaciones de 2.12 mm entre cartas, sin marcos añadidos. La barra superior muestra el número a la izquierda, **Loteria Mexa** centrado y el QR a la derecha, conservando su zona blanca de seguridad. Imprime en papel Carta al 100%, sin necesidad de impresión sin bordes.
+El PDF sigue el estilo de cartón tradicional: márgenes blancos de 6.35 mm y separaciones de 2.12 mm entre cartas, sin marcos añadidos. La barra superior muestra el número a la izquierda, el logo **Loteria Mexa** centrado, sin deformarlo ni aumentar la altura del encabezado, y el QR a la derecha, conservando su zona blanca de seguridad. Imprime en papel Carta al 100%, sin necesidad de impresión sin bordes.
