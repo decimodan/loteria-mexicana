@@ -7,14 +7,15 @@ import {
   type PrintedBoard,
 } from "./printable-boards.ts";
 
-// Borderless Letter page: compact single-row header; grid runs to all page edges.
+// Traditional board: white paper margins and gutters, three-part header.
 export const BOARD_PDF_LAYOUT = {
   pageWidth: 612,
   pageHeight: 792,
-  margin: 0,
-  gridTop: 64,
+  margin: 18,
+  gridTop: 84,
+  gutter: 6,
   qrSize: 60,
-  qrTop: 2,
+  qrTop: 12,
 } as const;
 
 // 800px preserves print detail on the enlarged full-page cards; reuse assets per PDF.
@@ -96,12 +97,26 @@ export async function createBoardsPdf(
         color: navy,
       });
     const number = board.number ?? index + 1;
-    text("LOTERIA MEXA", 12, 20, 22, true);
-    text(`CARTÓN ${number}`, 246, 25, 14, true);
+    const brand = "Loteria Mexa";
+    text(
+      brand,
+      (BOARD_PDF_LAYOUT.pageWidth - bold.widthOfTextAtSize(brand, 22)) / 2,
+      29,
+      22,
+      true,
+    );
+    text(`CARTÓN ${number}`, BOARD_PDF_LAYOUT.margin, 33, 14, true);
     const left = BOARD_PDF_LAYOUT.margin,
       top = BOARD_PDF_LAYOUT.gridTop,
-      cellW = (BOARD_PDF_LAYOUT.pageWidth - left * 2) / 4,
-      cellH = (BOARD_PDF_LAYOUT.pageHeight - top - BOARD_PDF_LAYOUT.margin) / 4;
+      cellW =
+        (BOARD_PDF_LAYOUT.pageWidth - left * 2 - BOARD_PDF_LAYOUT.gutter * 3) /
+        4,
+      cellH =
+        (BOARD_PDF_LAYOUT.pageHeight -
+          top -
+          BOARD_PDF_LAYOUT.margin -
+          BOARD_PDF_LAYOUT.gutter * 3) /
+        4;
     for (const [slot, filename] of board.cards.entries()) {
       if (!images.has(filename)) {
         const bytes = await loadImage(filename);
@@ -113,8 +128,8 @@ export async function createBoardsPdf(
         );
       }
       const image = images.get(filename)!;
-      const x = left + (slot % 4) * cellW;
-      const y = top + Math.floor(slot / 4) * cellH;
+      const x = left + (slot % 4) * (cellW + BOARD_PDF_LAYOUT.gutter);
+      const y = top + Math.floor(slot / 4) * (cellH + BOARD_PDF_LAYOUT.gutter);
       // Full artwork, edge-to-edge: no crop of card names/numbers and no letterboxing.
       page.drawImage(image, {
         x,
@@ -128,7 +143,7 @@ export async function createBoardsPdf(
     const quiet = 4,
       qrSize = BOARD_PDF_LAYOUT.qrSize,
       unit = qrSize / (qr.modules.size + quiet * 2);
-    const qrX = BOARD_PDF_LAYOUT.pageWidth - qrSize - 2,
+    const qrX = BOARD_PDF_LAYOUT.pageWidth - BOARD_PDF_LAYOUT.margin - qrSize,
       qrTop = BOARD_PDF_LAYOUT.qrTop;
     for (let row = 0; row < qr.modules.size; row++)
       for (let col = 0; col < qr.modules.size; col++) {
