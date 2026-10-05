@@ -96,7 +96,14 @@ const first = {
 };
 const second = boards[1];
 let loaded = 0,
-  progress = 0;
+  progress = 0,
+  logosLoaded = 0;
+const readLogo = async () => {
+  logosLoaded++;
+  return new Uint8Array(
+    await readFile(new URL("../src/assets/logo.png", import.meta.url)),
+  );
+};
 const qrLinks = ["AbCdEf012345", "ZyXwVu987654"].map(
   (id) => `https://loteria-mexicana.example.workers.dev/c/${id}`,
 );
@@ -118,22 +125,50 @@ const bytes = await createBoardsPdf(
     progress = done;
   },
   qrLinks,
+  readLogo,
 );
 const doc = await PDFDocument.load(bytes);
 assert.equal(doc.getPageCount(), 2);
 assert.deepEqual(doc.getPage(0).getSize(), { width: 612, height: 792 });
 assert.equal(progress, 2);
+assert.equal(logosLoaded, 1);
 assert.equal(loaded, new Set([...first.cards, ...second.cards]).size);
 if (process.env.PDF_QA_OUTPUT) {
   await mkdir("tmp/pdfs", { recursive: true });
   await writeFile(process.env.PDF_QA_OUTPUT, bytes);
   await writeFile("tmp/pdfs/expected-qr.json", JSON.stringify(qrLinks));
 }
-await assert.rejects(() =>
-  createBoardsPdf([first], origin, room, async () => {
-    throw new Error("test image failure");
-  }),
+await assert.rejects(
+  () =>
+    createBoardsPdf(
+      [first],
+      origin,
+      room,
+      async () => {
+        throw new Error("test image failure");
+      },
+      undefined,
+      qrLinks.slice(0, 1),
+      readLogo,
+    ),
+  /test image failure/,
 );
+await assert.rejects(
+  () =>
+    createBoardsPdf(
+      [first],
+      origin,
+      room,
+      undefined,
+      undefined,
+      undefined,
+      async () => {
+        throw new Error("test logo failure");
+      },
+    ),
+  /test logo failure/,
+);
+
 console.log(
   "PASS: 100 unique boards, QR round-trip/order, invalid input, room targeting, reusable links, PDF pages/images/cache/progress and load failures.",
 );

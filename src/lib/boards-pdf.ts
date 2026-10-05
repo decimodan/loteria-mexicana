@@ -56,6 +56,13 @@ export async function loadPrintImage(filename: string): Promise<Uint8Array> {
   }
 }
 
+export async function loadPrintLogo(): Promise<Uint8Array> {
+  const response = await fetch(new URL("../assets/logo.png", import.meta.url));
+  if (!response.ok)
+    throw new Error("No se pudo cargar el logo. Intenta de nuevo.");
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 export async function createBoardsPdf(
   boards: PrintedBoard[],
   origin: string,
@@ -63,6 +70,7 @@ export async function createBoardsPdf(
   loadImage: (filename: string) => Promise<Uint8Array> = loadPrintImage,
   progress: (completed: number, total: number) => void = () => {},
   qrLinks?: string[],
+  loadLogo: () => Promise<Uint8Array> = loadPrintLogo,
 ) {
   if (!boards.length || boards.length > MAX_PRINT_BOARDS)
     throw new Error("El PDF requiere entre 1 y 100 cartones.");
@@ -90,6 +98,9 @@ export async function createBoardsPdf(
   const bold = await pdf.embedFont(StandardFonts.TimesRomanBold);
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const images = new Map<string, PDFImage>();
+  const logo = await pdf.embedPng(await loadLogo());
+  const logoHeight = 48;
+  const logoWidth = (logo.width * logoHeight) / logo.height;
   const navy = rgb(0.35, 0.09, 0.1);
   for (const [index, board] of boards.entries()) {
     // US Letter, one board per page. Coordinates here are from the top.
@@ -112,14 +123,12 @@ export async function createBoardsPdf(
         color: navy,
       });
     const number = board.number ?? index + 1;
-    const brand = "Loteria Mexa";
-    text(
-      brand,
-      (BOARD_PDF_LAYOUT.pageWidth - bold.widthOfTextAtSize(brand, 18)) / 2,
-      23,
-      18,
-      true,
-    );
+    page.drawImage(logo, {
+      x: (BOARD_PDF_LAYOUT.pageWidth - logoWidth) / 2,
+      y: BOARD_PDF_LAYOUT.pageHeight - 8 - logoHeight,
+      width: logoWidth,
+      height: logoHeight,
+    });
     text(`CARTÓN ${number}`, BOARD_PDF_LAYOUT.margin, 25, 12, true);
     const left = BOARD_PDF_LAYOUT.margin,
       top = BOARD_PDF_LAYOUT.gridTop,
