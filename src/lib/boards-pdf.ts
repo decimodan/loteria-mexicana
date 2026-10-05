@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb, type PDFImage } from "pdf-lib";
+import { PDFDocument, rgb, type PDFImage } from "pdf-lib";
 import QRCode from "qrcode";
 import {
   boardLink,
@@ -7,7 +7,7 @@ import {
   type PrintedBoard,
 } from "./printable-boards.ts";
 
-// Traditional board: white paper margins and gutters, three-part header.
+// Traditional board: white margins/gutters, logo left and QR right.
 export const BOARD_PDF_LAYOUT = {
   pageWidth: 612,
   pageHeight: 792,
@@ -95,41 +95,23 @@ export async function createBoardsPdf(
   const pdf = await PDFDocument.create();
   pdf.setTitle("Cartones físicos de Loteria Mexa");
   pdf.setCreator("Loteria Mexa");
-  const bold = await pdf.embedFont(StandardFonts.TimesRomanBold);
-  const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const images = new Map<string, PDFImage>();
   const logo = await pdf.embedPng(await loadLogo());
   const logoHeight = 48;
   const logoWidth = (logo.width * logoHeight) / logo.height;
-  const navy = rgb(0.35, 0.09, 0.1);
   for (const [index, board] of boards.entries()) {
     // US Letter, one board per page. Coordinates here are from the top.
     const page = pdf.addPage([
       BOARD_PDF_LAYOUT.pageWidth,
       BOARD_PDF_LAYOUT.pageHeight,
     ]);
-    const text = (
-      value: string,
-      x: number,
-      top: number,
-      size: number,
-      strong = false,
-    ) =>
-      page.drawText(value, {
-        x,
-        y: 792 - top - size,
-        size,
-        font: strong ? bold : regular,
-        color: navy,
-      });
     const number = board.number ?? index + 1;
     page.drawImage(logo, {
-      x: (BOARD_PDF_LAYOUT.pageWidth - logoWidth) / 2,
+      x: BOARD_PDF_LAYOUT.margin,
       y: BOARD_PDF_LAYOUT.pageHeight - 8 - logoHeight,
       width: logoWidth,
       height: logoHeight,
     });
-    text(`CARTÓN ${number}`, BOARD_PDF_LAYOUT.margin, 25, 12, true);
     const left = BOARD_PDF_LAYOUT.margin,
       top = BOARD_PDF_LAYOUT.gridTop,
       cellW =
