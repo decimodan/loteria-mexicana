@@ -46,4 +46,4 @@ Desde una sala los QR apuntan a esa sala; puedes desmarcar **Vincular los QR a e
 
 Pruebas del generador, QR y PDF: `npm run test:print` (Node >=22.12). Las pruebas integradas de salas también registran un cartón generado desde su QR y comprueban que la evidencia VAR coincida.
 
-El PDF usa la hoja Carta sin márgenes exteriores ni separadores entre cartas. Marca y número comparten una franja de 64pt con el QR arriba a la derecha; la cuadrícula llega a los bordes laterales e inferior. La zona blanca de seguridad del QR se conserva para que sea escaneable. Para imprimir sin márgenes físicos, usa una impresora compatible con impresión sin bordes; en otras impresoras, ajusta al área imprimible para evitar recortes.
+El PDF sigue el estilo de cartón tradicional: márgenes blancos de 6.35 mm y separaciones de 2.12 mm entre cartas, sin marcos añadidos. La barra superior muestra el número a la izquierda, **Loteria Mexa** centrado y el QR a la derecha, conservando su zona blanca de seguridad. Imprime en papel Carta al100%, sin necesidad de impresión sin bordes.
