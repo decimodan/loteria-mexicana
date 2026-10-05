@@ -13,7 +13,11 @@ import {
   tokenFromInput,
   roomFromInvite,
 } from "../src/lib/printable-boards.ts";
-import { createBoardsPdf, loadPrintImage } from "../src/lib/boards-pdf.ts";
+import {
+  createBoardsPdf,
+  loadPrintImage,
+  BOARD_PDF_LAYOUT,
+} from "../src/lib/boards-pdf.ts";
 const boards = generateBoards(100);
 assert.deepEqual(mergePrintedBoard([[]], boards[0].token), [boards[0].cards]);
 assert.deepEqual(mergePrintedBoard([boards[0].cards], boards[1].token), [
@@ -185,8 +189,8 @@ try {
     await loadPrintImage("1-EL-GALLO.jpg"),
     new Uint8Array(jpegBytes),
   );
-  assert.equal(canvas.width, 400);
-  assert.equal(canvas.height, 600);
+  assert.equal(canvas.width, 533);
+  assert.equal(canvas.height, 800);
   assert.equal(closed, 1);
   globalThis.document = {
     createElement() {
@@ -208,4 +212,16 @@ try {
 }
 console.log(
   "PASS: browser image optimization size, JPEG format, fallback, cleanup and fetch/canvas failures.",
+);
+
+assert.equal(BOARD_PDF_LAYOUT.margin, 18);
+assert.equal(BOARD_PDF_LAYOUT.pageWidth - BOARD_PDF_LAYOUT.margin * 2, 576);
+assert.equal(
+  BOARD_PDF_LAYOUT.pageHeight -
+    BOARD_PDF_LAYOUT.gridTop -
+    BOARD_PDF_LAYOUT.margin,
+  670,
+);
+assert.ok(
+  BOARD_PDF_LAYOUT.qrTop + BOARD_PDF_LAYOUT.qrSize < BOARD_PDF_LAYOUT.gridTop,
 );

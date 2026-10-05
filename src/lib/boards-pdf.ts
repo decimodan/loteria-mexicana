@@ -7,7 +7,17 @@ import {
   type PrintedBoard,
 } from "./printable-boards.ts";
 
-// 600px is enough for >300dpi at the printed card height; reuse assets per PDF.
+// Letter page: only 6.35mm print margins, all remaining body space is the grid.
+export const BOARD_PDF_LAYOUT = {
+  pageWidth: 612,
+  pageHeight: 792,
+  margin: 18,
+  gridTop: 104,
+  qrSize: 84,
+  qrTop: 10,
+} as const;
+
+// 800px preserves print detail on the enlarged full-page cards; reuse assets per PDF.
 export async function loadPrintImage(filename: string): Promise<Uint8Array> {
   const response = await fetch(
     `/cartas-sin-borde/${encodeURIComponent(filename)}`,
@@ -19,7 +29,7 @@ export async function loadPrintImage(filename: string): Promise<Uint8Array> {
     return new Uint8Array(await blob.arrayBuffer());
   const bitmap = await createImageBitmap(blob);
   try {
-    const scale = Math.min(1, 600 / Math.max(bitmap.width, bitmap.height));
+    const scale = Math.min(1, 800 / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(bitmap.width * scale));
     canvas.height = Math.max(1, Math.round(bitmap.height * scale));
@@ -67,7 +77,10 @@ export async function createBoardsPdf(
   const navy = rgb(0.35, 0.09, 0.1);
   for (const [index, board] of boards.entries()) {
     // US Letter, one board per page. Coordinates here are from the top.
-    const page = pdf.addPage([612, 792]);
+    const page = pdf.addPage([
+      BOARD_PDF_LAYOUT.pageWidth,
+      BOARD_PDF_LAYOUT.pageHeight,
+    ]);
     const text = (
       value: string,
       x: number,
@@ -83,12 +96,12 @@ export async function createBoardsPdf(
         color: navy,
       });
     const number = board.number ?? index + 1;
-    text("LOTERIA MEXA", 106, 36, 25, true);
-    text(`CARTÓN ${number}`, 416, 42, 14, true);
-    const left = 106,
-      top = 80,
-      cellW = 100,
-      cellH = 144;
+    text("LOTERIA MEXA", BOARD_PDF_LAYOUT.margin, 24, 28, true);
+    text(`CARTÓN ${number}`, BOARD_PDF_LAYOUT.margin, 62, 17, true);
+    const left = BOARD_PDF_LAYOUT.margin,
+      top = BOARD_PDF_LAYOUT.gridTop,
+      cellW = (BOARD_PDF_LAYOUT.pageWidth - left * 2) / 4,
+      cellH = (BOARD_PDF_LAYOUT.pageHeight - top - BOARD_PDF_LAYOUT.margin) / 4;
     for (const [slot, filename] of board.cards.entries()) {
       if (!images.has(filename)) {
         const bytes = await loadImage(filename);
@@ -121,10 +134,10 @@ export async function createBoardsPdf(
     const url = boardLink(board.token, origin, room, number);
     const qr = QRCode.create(url, { errorCorrectionLevel: "M" });
     const quiet = 4,
-      qrSize = 84,
+      qrSize = BOARD_PDF_LAYOUT.qrSize,
       unit = qrSize / (qr.modules.size + quiet * 2);
-    const qrX = 264,
-      qrTop = 676;
+    const qrX = BOARD_PDF_LAYOUT.pageWidth - BOARD_PDF_LAYOUT.margin - qrSize,
+      qrTop = BOARD_PDF_LAYOUT.qrTop;
     for (let row = 0; row < qr.modules.size; row++)
       for (let col = 0; col < qr.modules.size; col++) {
         if (qr.modules.get(row, col))
